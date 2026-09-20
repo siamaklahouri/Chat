@@ -1,0 +1,30 @@
+# Caddy خودش گواهی HTTPS را از Let's Encrypt می‌گیرد و تمدید می‌کند.
+# وب‌سوکت هم بدون تنظیم اضافه پراکسی می‌شود.
+{$DOMAIN} {
+	encode zstd gzip
+
+	# سقف حجم درخواست: کمی بیشتر از بیشینه‌ی حجم عکس
+	request_body {
+		max_size 12MB
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "same-origin"
+		-Server
+	}
+
+	reverse_proxy app:3000 {
+		# آپلود و دانلود عکس نباید با بافر کردن کند شود.
+		flush_interval -1
+	}
+
+	log {
+		output file /data/access.log {
+			roll_size 10MB
+			roll_keep 3
+		}
+	}
+}

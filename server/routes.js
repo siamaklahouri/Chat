@@ -34,8 +34,14 @@ const withPresence = (user) => user && { ...user, online: hub.isOnline(user.id) 
 const decorateConversation = (conv) =>
   conv && { ...conv, peer: withPresence(conv.peer), members: conv.members.map(withPresence) };
 
-function setSessionCookie(res, token) {
-  res.cookie('token', token, { httpOnly: true, sameSite: 'lax', maxAge: SESSION_TTL_MS });
+/** پشت پراکسی HTTPS، کوکی نشست با پرچم Secure فرستاده می‌شود. */
+function setSessionCookie(req, res, token) {
+  res.cookie('token', token, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: req.secure,
+    maxAge: SESSION_TTL_MS,
+  });
 }
 
 /* -------------------------------- auth -------------------------------- */
@@ -73,7 +79,7 @@ router.post('/auth/register', (req, res) => {
     });
   }
   const { token } = createSession(user.id);
-  setSessionCookie(res, token);
+  setSessionCookie(req, res, token);
   res.status(201).json({ token, user: payload, pending: false });
 });
 
@@ -91,7 +97,7 @@ router.post('/auth/login', (req, res) => {
 
   store.touchUser(user.id);
   const { token } = createSession(user.id);
-  setSessionCookie(res, token);
+  setSessionCookie(req, res, token);
   res.json({ token, user: store.publicUser(user) });
 });
 

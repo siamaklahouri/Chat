@@ -10,4 +10,8 @@ android/app/build/
 android/local.properties
 android/.idea/
 *.apk
+# نسخه‌ی ساخته‌شده و امضاشده برای دانلود مستقیم در مخزن می‌ماند
+!dist/*.apk
 *.keystore
+android/keystore.properties
+*.jks
