@@ -1,0 +1,35 @@
+{
+  "name": "messenger",
+  "version": "1.0.0",
+  "description": "پیام‌رسان ساده: چت، ارسال عکس، پنل مدیریت و پاکسازی هفتگی داده‌ها",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "test": "node --test test/api.test.js",
+    "icons": "node scripts/make-icons.js",
+    "create-admin": "node scripts/create-admin.js",
+    "wipe": "node scripts/wipe-now.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/siamaklahouri/Chat.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/siamaklahouri/Chat/issues"
+  },
+  "homepage": "https://github.com/siamaklahouri/Chat#readme",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "express": "^4.22.3",
+    "multer": "^1.4.5-lts.1",
+    "ws": "^8.21.3"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=22.5.0"
+  }
+}

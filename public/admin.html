@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#0f1720" />
+<title>پنل مدیریت — پیام‌رسان</title>
+<link rel="icon" href="/icons/icon-192.png" />
+<link rel="stylesheet" href="/css/style.css" />
+<link rel="stylesheet" href="/css/admin.css" />
+</head>
+<body class="admin-body">
+
+<header class="admin-header">
+  <a href="/" class="icon-btn" title="بازگشت به پیام‌رسان">
+    <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="m10 6 1.4 1.4L7.8 11H20v2H7.8l3.6 3.6L10 18l-6-6z"/></svg>
+  </a>
+  <h1>پنل مدیریت</h1>
+  <span id="adminWho" class="muted"></span>
+</header>
+
+<main class="admin-main">
+  <section id="adminGate" class="admin-gate">
+    <p id="gateMessage">در حال بررسی دسترسی…</p>
+    <form id="adminLoginForm" class="auth-form is-hidden">
+      <label class="field"><span>نام کاربری مدیر</span>
+        <input name="username" autocapitalize="none" required /></label>
+      <label class="field"><span>رمز عبور</span>
+        <input name="password" type="password" required /></label>
+      <button class="btn btn-primary" type="submit">ورود</button>
+    </form>
+  </section>
+
+  <section id="adminContent" class="is-hidden">
+    <div class="stat-grid">
+      <div class="stat"><strong id="statUsers">—</strong><span>کاربر</span></div>
+      <div class="stat pending"><strong id="statPending">—</strong><span>در انتظار تایید</span></div>
+      <div class="stat"><strong id="statOnline">—</strong><span>آنلاین</span></div>
+      <div class="stat"><strong id="statMessages">—</strong><span>پیام</span></div>
+      <div class="stat"><strong id="statImages">—</strong><span>عکس</span></div>
+      <div class="stat"><strong id="statConversations">—</strong><span>گفتگو</span></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <strong>پاکسازی هفتگی داده‌ها</strong>
+        <button id="wipeBtn" class="btn btn-danger">پاکسازی همین حالا</button>
+      </div>
+      <p id="wipeText" class="muted"></p>
+      <p class="muted">در هر پاکسازی همه‌ی پیام‌ها و عکس‌ها حذف می‌شوند؛ حساب‌ها، گروه‌ها و تاییدها باقی می‌مانند.</p>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <strong>کاربران</strong>
+        <div class="filters">
+          <button class="chip is-active" data-filter="">همه</button>
+          <button class="chip" data-filter="pending">در انتظار</button>
+          <button class="chip" data-filter="approved">تاییدشده</button>
+          <button class="chip" data-filter="blocked">مسدود</button>
+        </div>
+      </div>
+      <div id="userList" class="user-list"></div>
+    </div>
+  </section>
+</main>
+
+<div id="toast" class="toast is-hidden" role="alert"></div>
+<script src="/js/admin.js"></script>
+</body>
+</html>

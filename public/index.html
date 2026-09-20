@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+<meta name="theme-color" content="#0f1720" />
+<meta name="description" content="پیام‌رسان ساده برای چت و ارسال عکس" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<title>پیام‌رسان</title>
+<link rel="manifest" href="/manifest.webmanifest" />
+<link rel="icon" href="/icons/icon-192.png" />
+<link rel="apple-touch-icon" href="/icons/icon-192.png" />
+<link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+
+<!-- ورود و ثبت‌نام -->
+<section id="authScreen" class="screen auth-screen">
+  <div class="auth-card">
+    <div class="brand">
+      <div class="brand-logo" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="30" height="30"><path fill="currentColor" d="M12 3C6.98 3 3 6.58 3 11c0 2.34 1.12 4.43 2.9 5.86L5 21l4.4-2.1c.83.2 1.7.3 2.6.3 5.02 0 9-3.58 9-8s-3.98-8-9-8Z"/></svg>
+      </div>
+      <h1>پیام‌رسان</h1>
+      <p class="muted">گفتگو و ارسال عکس، ساده و سریع</p>
+    </div>
+
+    <div class="tabs" role="tablist">
+      <button class="tab is-active" data-auth-tab="login" role="tab">ورود</button>
+      <button class="tab" data-auth-tab="register" role="tab">ثبت‌نام</button>
+    </div>
+
+    <form id="loginForm" class="auth-form" autocomplete="on">
+      <label class="field">
+        <span>نام کاربری</span>
+        <input name="username" type="text" inputmode="latin" autocapitalize="none" placeholder="username" required />
+      </label>
+      <label class="field">
+        <span>رمز عبور</span>
+        <input name="password" type="password" placeholder="••••••" required />
+      </label>
+      <button class="btn btn-primary" type="submit">ورود</button>
+    </form>
+
+    <form id="registerForm" class="auth-form is-hidden" autocomplete="on">
+      <label class="field">
+        <span>نام نمایشی</span>
+        <input name="displayName" type="text" placeholder="نام شما" maxlength="40" required />
+      </label>
+      <label class="field">
+        <span>نام کاربری</span>
+        <input name="username" type="text" inputmode="latin" autocapitalize="none" placeholder="فقط حروف انگلیسی، عدد و _" required />
+      </label>
+      <label class="field">
+        <span>رمز عبور</span>
+        <input name="password" type="password" placeholder="حداقل ۶ نویسه" minlength="6" required />
+      </label>
+      <button class="btn btn-primary" type="submit">ثبت‌نام</button>
+      <p class="hint">پس از ثبت‌نام، حساب شما باید توسط مدیر تایید شود.</p>
+    </form>
+
+    <p id="authMessage" class="auth-message" role="status"></p>
+  </div>
+</section>
+
+<!-- برنامه اصلی -->
+<main id="appScreen" class="screen app-screen is-hidden">
+  <!-- ستون گفتگوها -->
+  <aside id="sidebar" class="sidebar">
+    <header class="sidebar-header">
+      <button id="profileBtn" class="avatar-btn" title="پروفایل">
+        <span id="meAvatar" class="avatar"></span>
+      </button>
+      <div class="sidebar-title">
+        <strong id="meName">…</strong>
+        <small id="connectionState" class="muted">در حال اتصال…</small>
+      </div>
+      <a id="adminLink" href="/admin" class="icon-btn is-hidden" title="پنل مدیریت" aria-label="پنل مدیریت">
+        <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3Zm0 6a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5Zm0 11c-1.9 0-3.6-1-4.6-2.4.1-1.5 3.1-2.3 4.6-2.3s4.5.8 4.6 2.3A5.6 5.6 0 0 1 12 19Z"/></svg>
+      </a>
+      <button id="newChatBtn" class="icon-btn" title="گفتگوی جدید" aria-label="گفتگوی جدید">
+        <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M13 5h-2v6H5v2h6v6h2v-6h6v-2h-6z"/></svg>
+      </button>
+    </header>
+
+    <div class="search-row">
+      <input id="conversationSearch" type="search" placeholder="جستجو در گفتگوها…" />
+    </div>
+
+    <div id="conversationList" class="conversation-list"></div>
+
+    <footer class="sidebar-footer">
+      <span id="wipeInfo" class="muted"></span>
+    </footer>
+  </aside>
+
+  <!-- ستون گفتگو -->
+  <section id="chatPanel" class="chat-panel">
+    <div id="emptyState" class="empty-state">
+      <div class="empty-icon" aria-hidden="true">💬</div>
+      <p>یک گفتگو را باز کنید یا گفتگوی تازه‌ای بسازید.</p>
+    </div>
+
+    <div id="chatView" class="chat-view is-hidden">
+      <header class="chat-header">
+        <button id="backBtn" class="icon-btn only-mobile" aria-label="بازگشت">
+          <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="m10 6 1.4 1.4L7.8 11H20v2H7.8l3.6 3.6L10 18l-6-6z"/></svg>
+        </button>
+        <span id="chatAvatar" class="avatar"></span>
+        <div class="chat-title">
+          <strong id="chatName">…</strong>
+          <small id="chatStatus" class="muted"></small>
+        </div>
+        <button id="chatInfoBtn" class="icon-btn" aria-label="اطلاعات گفتگو">
+          <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M11 7h2v2h-2zm0 4h2v6h-2zm1-9a10 10 0 1 0 0 20 10 10 0 0 0 0-20Z"/></svg>
+        </button>
+      </header>
+
+      <div id="messageList" class="message-list"></div>
+
+      <div id="typingIndicator" class="typing-indicator is-hidden"></div>
+
+      <div id="replyBar" class="reply-bar is-hidden">
+        <div class="reply-bar-text">
+          <small>پاسخ به <b id="replyAuthor"></b></small>
+          <span id="replyPreview"></span>
+        </div>
+        <button id="cancelReply" class="icon-btn" aria-label="لغو پاسخ">✕</button>
+      </div>
+
+      <div id="imagePreview" class="image-preview is-hidden">
+        <img id="imagePreviewImg" alt="پیش‌نمایش عکس" />
+        <div class="image-preview-meta">
+          <span id="imagePreviewName"></span>
+          <small id="imagePreviewSize" class="muted"></small>
+        </div>
+        <button id="cancelImage" class="icon-btn" aria-label="حذف عکس">✕</button>
+      </div>
+
+      <form id="composer" class="composer">
+        <input id="imageInput" type="file" accept="image/*" class="is-hidden" />
+        <button id="attachBtn" type="button" class="icon-btn" title="ارسال عکس" aria-label="ارسال عکس">
+          <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2Zm0 16H5l3.5-4.5 2.5 3L14.5 12 19 19Z"/></svg>
+        </button>
+        <textarea id="messageInput" rows="1" placeholder="پیام بنویسید…" maxlength="4000"></textarea>
+        <button id="sendBtn" class="send-btn" type="submit" aria-label="ارسال">
+          <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M3 20.5 21 12 3 3.5 3 10l12 2-12 2z"/></svg>
+        </button>
+      </form>
+    </div>
+  </section>
+</main>
+
+<!-- پنجره‌ها -->
+<div id="modalRoot" class="modal-root is-hidden">
+  <div class="modal-backdrop" data-close-modal></div>
+  <div class="modal" role="dialog" aria-modal="true">
+    <header class="modal-header">
+      <strong id="modalTitle"></strong>
+      <button class="icon-btn" data-close-modal aria-label="بستن">✕</button>
+    </header>
+    <div id="modalBody" class="modal-body"></div>
+  </div>
+</div>
+
+<div id="lightbox" class="lightbox is-hidden">
+  <button class="icon-btn lightbox-close" aria-label="بستن">✕</button>
+  <a id="lightboxDownload" class="icon-btn lightbox-download" download aria-label="دانلود">
+    <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M12 16l-5-5h3V4h4v7h3zM5 18h14v2H5z"/></svg>
+  </a>
+  <img id="lightboxImg" alt="عکس" />
+</div>
+
+<div id="toast" class="toast is-hidden" role="alert"></div>
+
+<script src="/js/app.js"></script>
+</body>
+</html>
