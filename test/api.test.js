@@ -438,6 +438,60 @@ test('با روشن کردن CLEANUP_INTERVAL_DAYS، پاکسازی عقب‌ا�
   assert.equal(info.remaining, 0);
 });
 
+test('تغییر رمز: رمز فعلی اشتباه رد می‌شود و رمز درست نشست تازه می‌دهد', async () => {
+  // آزمون مسدودسازی، نشست‌های این کاربر را باطل کرده بود؛ یک نشست تازه می‌گیریم.
+  const relogin = await call('/api/auth/login', {
+    method: 'POST',
+    body: { username: 'sara', password: 'secret123' },
+  });
+  assert.equal(relogin.status, 200);
+  context.saraToken = relogin.body.token;
+
+  const wrong = await call('/api/me/password', {
+    method: 'POST',
+    token: context.saraToken,
+    body: { currentPassword: 'not-the-password', newPassword: 'brandNew123' },
+  });
+  assert.equal(wrong.status, 403);
+
+  const short = await call('/api/me/password', {
+    method: 'POST',
+    token: context.saraToken,
+    body: { currentPassword: 'secret123', newPassword: '123' },
+  });
+  assert.equal(short.status, 400);
+
+  const ok = await call('/api/me/password', {
+    method: 'POST',
+    token: context.saraToken,
+    body: { currentPassword: 'secret123', newPassword: 'brandNew123' },
+  });
+  assert.equal(ok.status, 200);
+  assert.ok(ok.body.token, 'باید نشست تازه بدهد');
+
+  // نشست قدیمی باطل شده (یعنی دستگاه‌های دیگر بیرون افتاده‌اند)
+  const oldSession = await call('/api/conversations', { token: context.saraToken });
+  assert.equal(oldSession.status, 401);
+
+  // نشست تازه کار می‌کند
+  const fresh = await call('/api/conversations', { token: ok.body.token });
+  assert.equal(fresh.status, 200);
+
+  // ورود با رمز قدیمی دیگر ممکن نیست، با رمز تازه هست
+  const oldLogin = await call('/api/auth/login', {
+    method: 'POST',
+    body: { username: 'sara', password: 'secret123' },
+  });
+  assert.equal(oldLogin.status, 401);
+
+  const newLogin = await call('/api/auth/login', {
+    method: 'POST',
+    body: { username: 'sara', password: 'brandNew123' },
+  });
+  assert.equal(newLogin.status, 200);
+  context.saraToken = newLogin.body.token;
+});
+
 test('کاربر فقط با نام کاربری دقیق پیدا می‌شود، نه با بخشی از آن', async () => {
   const exact = await call('/api/users?q=sara', { token: context.adminToken });
   assert.equal(exact.status, 200);

@@ -369,6 +369,12 @@ button { cursor: pointer; }
 }
 .modal-body { padding: 14px; overflow-y: auto; display: grid; gap: 12px; }
 
+.modal-divider {
+  margin-top: 6px; padding-top: 12px;
+  border-top: 1px solid var(--line);
+  font-size: 13px; color: var(--muted);
+}
+
 .user-row {
   display: flex; align-items: center; gap: 10px; width: 100%;
   padding: 9px 10px; border-radius: 12px; border: 1px solid var(--line);

@@ -1262,6 +1262,52 @@
         }
       });
 
+      // --- تغییر رمز ---
+      const divider = document.createElement('div');
+      divider.className = 'modal-divider';
+      divider.textContent = 'تغییر رمز عبور';
+
+      const currentPassword = document.createElement('input');
+      currentPassword.type = 'password';
+      currentPassword.placeholder = 'رمز فعلی';
+      currentPassword.autocomplete = 'current-password';
+
+      const newPassword = document.createElement('input');
+      newPassword.type = 'password';
+      newPassword.placeholder = 'رمز تازه (حداقل ۶ نویسه)';
+      newPassword.autocomplete = 'new-password';
+
+      const changePassword = document.createElement('button');
+      changePassword.className = 'btn';
+      changePassword.textContent = 'تغییر رمز';
+      changePassword.addEventListener('click', async () => {
+        if (!currentPassword.value || !newPassword.value) {
+          return toast('هر دو رمز را پر کنید.', true);
+        }
+        changePassword.disabled = true;
+        try {
+          const data = await api('/me/password', {
+            method: 'POST',
+            body: { currentPassword: currentPassword.value, newPassword: newPassword.value },
+          });
+          state.token = data.token;
+          localStorage.setItem(TOKEN_KEY, data.token);
+          currentPassword.value = '';
+          newPassword.value = '';
+          toast(data.message);
+          // نشست تازه است، پس اتصال زنده هم باید با توکن تازه برقرار شود.
+          if (state.socket) {
+            state.socket.onclose = null;
+            state.socket.close();
+          }
+          connectSocket();
+        } catch (err) {
+          toast(err.message, true);
+        } finally {
+          changePassword.disabled = false;
+        }
+      });
+
       const notifyBtn = document.createElement('button');
       notifyBtn.className = 'btn';
       notifyBtn.textContent = '🔔 فعال‌سازی اعلان‌ها';
@@ -1276,7 +1322,11 @@
         signOut();
       });
 
-      body.append(username, name, bio, save, notifyBtn, logout);
+      body.append(
+        username, name, bio, save,
+        divider, currentPassword, newPassword, changePassword,
+        notifyBtn, logout
+      );
     });
   }
 

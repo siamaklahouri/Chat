@@ -123,6 +123,24 @@ router.patch('/me', requireApproved, (req, res) => {
   res.json({ user: payload });
 });
 
+router.post('/me/password', requireApproved, (req, res) => {
+  const currentPassword = typeof req.body.currentPassword === 'string' ? req.body.currentPassword : '';
+  const newPassword = typeof req.body.newPassword === 'string' ? req.body.newPassword : '';
+
+  if (!verifyPassword(currentPassword, req.user.password_hash)) {
+    return fail(res, 403, 'رمز فعلی درست نیست.');
+  }
+  if (newPassword.length < 6) return fail(res, 400, 'رمز تازه باید حداقل ۶ نویسه باشد.');
+  if (newPassword === currentPassword) return fail(res, 400, 'رمز تازه با رمز فعلی یکی است.');
+
+  // تغییر رمز همه‌ی نشست‌ها را باطل می‌کند (یعنی دستگاه‌های دیگر بیرون می‌افتند)،
+  // پس برای همین دستگاه یک نشست تازه می‌سازیم تا کاربر بیرون پرت نشود.
+  store.setUserPassword(req.user.id, newPassword);
+  const { token } = createSession(req.user.id);
+  setSessionCookie(req, res, token);
+  res.json({ token, message: 'رمز عبور عوض شد. دستگاه‌های دیگر باید دوباره وارد شوند.' });
+});
+
 router.get('/users', requireApproved, (req, res) => {
   // فقط تطبیق دقیقِ نام کاربری؛ هر ورودی‌ای که شکل نام کاربری ندارد، نتیجه‌ی خالی می‌دهد.
   const handle = clean(req.query.q).replace(/^@/, '');
