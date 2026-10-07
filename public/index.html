@@ -125,7 +125,15 @@
         </button>
       </header>
 
-      <div id="messageList" class="message-list"></div>
+      <div class="message-area">
+        <div id="messageList" class="message-list"></div>
+        <button id="jumpToLatest" class="jump-btn is-hidden" type="button" aria-label="رفتن به آخرین پیام">
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+            <path fill="currentColor" d="M12 16.5 5.5 10l1.4-1.4L12 13.7l5.1-5.1L18.5 10z"/>
+          </svg>
+          <span class="jump-badge is-hidden"></span>
+        </button>
+      </div>
 
       <div id="typingIndicator" class="typing-indicator is-hidden"></div>
 

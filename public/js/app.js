@@ -19,6 +19,7 @@
     editing: null,
     pendingImage: null,
     typingPeers: new Map(),
+    missedWhileUp: 0,
     typingTimer: null,
     typingSentAt: 0,
     socket: null,
@@ -299,7 +300,9 @@
     row.dataset.id = message.id;
 
     const bubble = document.createElement('div');
-    bubble.className = `bubble${grouped ? ' grouped' : ''}`;
+    // پیامی که فقط عکس است، بدون حاشیه نشان داده می‌شود تا قاب‌مانند نشود.
+    const mediaOnly = message.kind === 'image' && !message.body && !message.replyTo && !message.deleted;
+    bubble.className = `bubble${grouped ? ' grouped' : ''}${mediaOnly ? ' media' : ''}`;
 
     const conv = state.conversations.get(state.activeId);
     if (!mine && conv?.type === 'group' && !grouped) {
@@ -329,14 +332,14 @@
       const button = document.createElement('button');
       button.className = 'bubble-image';
       button.type = 'button';
+      const { width, height } = message.attachment;
+      // نسبت ابعاد را از قبل می‌دهیم تا موقع بارگذاری عکس، چیدمان نپرد.
+      if (width && height) button.style.aspectRatio = `${width} / ${height}`;
       const img = document.createElement('img');
       img.loading = 'lazy';
+      img.decoding = 'async';
       img.alt = message.attachment.name || 'عکس';
       img.src = fileUrl(message.attachment.url);
-      if (message.attachment.width && message.attachment.height) {
-        img.width = message.attachment.width;
-        img.height = message.attachment.height;
-      }
       button.appendChild(img);
       button.addEventListener('click', () => openLightbox(message.attachment));
       bubble.appendChild(button);
@@ -360,12 +363,8 @@
       meta.appendChild(edited);
     }
     if (mine && !message.deleted) {
-      const tick = document.createElement('span');
-      const isRead = message.id <= readUpTo();
-      tick.className = `tick${isRead ? ' read' : ''}`;
-      tick.textContent = isRead ? '✓✓' : '✓';
-      tick.title = isRead ? 'خوانده شد' : 'ارسال شد';
-      meta.appendChild(tick);
+      const state = message.pending ? 'pending' : message.id <= readUpTo() ? 'read' : 'sent';
+      meta.appendChild(tickIcon(state));
     }
     bubble.appendChild(meta);
 
@@ -390,6 +389,36 @@
     return row;
   }
 
+  /** آیکون وضعیت پیام: در حال ارسال → ارسال شد → خوانده شد. */
+  function tickIcon(state) {
+    const span = document.createElement('span');
+    span.className = `tick tick-${state}`;
+    span.title = { pending: 'در حال ارسال', sent: 'ارسال شد', read: 'خوانده شد' }[state];
+
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 22 22');
+    svg.setAttribute('aria-hidden', 'true');
+
+    const draw = (d) => {
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', d);
+      svg.appendChild(path);
+    };
+
+    if (state === 'pending') {
+      draw('M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14');
+      draw('M11 7.5V11l2.5 2');
+    } else if (state === 'sent') {
+      draw('M4 11.5 L8.5 16 L18 5.5');
+    } else {
+      draw('M1.5 11.5 L6 16 L14 5.5');
+      draw('M9 11.5 L13.5 16 L21.5 5.5');
+    }
+
+    span.appendChild(svg);
+    return span;
+  }
+
   function iconButton(label, title, onClick) {
     const button = document.createElement('button');
     button.type = 'button';
@@ -399,10 +428,12 @@
     return button;
   }
 
-  function renderMessages(keepScroll = false) {
+  function renderMessages({ keepScroll = false, toBottom = null } = {}) {
     const list = $('messageList');
     const previousHeight = list.scrollHeight;
     const previousTop = list.scrollTop;
+    // اگر کاربر بالا رفته و دارد تاریخچه می‌خواند، پیام تازه نباید صفحه را پایین بکشد.
+    const stick = toBottom === null ? atBottom() : toBottom;
     list.innerHTML = '';
 
     let lastDay = '';
@@ -438,7 +469,22 @@
     }
 
     if (keepScroll) list.scrollTop = list.scrollHeight - previousHeight + previousTop;
-    else list.scrollTop = list.scrollHeight;
+    else if (stick) list.scrollTop = list.scrollHeight;
+    else list.scrollTop = previousTop;
+
+    updateJumpButton();
+  }
+
+  /** دکمه‌ی «رفتن به آخرین پیام»، فقط وقتی کاربر بالا رفته باشد. */
+  function updateJumpButton() {
+    const button = $('jumpToLatest');
+    if (!button) return;
+    const hidden = atBottom() || state.messages.length === 0;
+    button.classList.toggle('is-hidden', hidden);
+    if (hidden) state.missedWhileUp = 0;
+    const badge = button.querySelector('.jump-badge');
+    badge.textContent = state.missedWhileUp ? fa(state.missedWhileUp) : '';
+    badge.classList.toggle('is-hidden', !state.missedWhileUp);
   }
 
   function scrollToMessage(id) {
@@ -479,7 +525,7 @@
       state.messages = data.messages;
       state.hasMore = data.hasMore;
       renderChatHeader();
-      renderMessages();
+      renderMessages({ toBottom: true });
       renderConversations();
       markConversationRead();
       $('messageInput').focus({ preventScroll: true });
@@ -497,7 +543,7 @@
       );
       state.messages = [...data.messages, ...state.messages];
       state.hasMore = data.hasMore;
-      renderMessages(true);
+      renderMessages({ keepScroll: true });
     } catch (err) {
       toast(err.message, true);
     } finally {
@@ -653,7 +699,7 @@
       replyTo: null,
     };
     state.messages.push(optimistic);
-    renderMessages();
+    renderMessages({ toBottom: true });
 
     try {
       await api(`/conversations/${state.activeId}/messages`, {
@@ -663,7 +709,7 @@
       state.messages = state.messages.filter((m) => m !== optimistic);
     } catch (err) {
       state.messages = state.messages.filter((m) => m !== optimistic);
-      renderMessages();
+      renderMessages({ toBottom: true });
       input.value = text;
       autoGrow();
       toast(err.message, true);
@@ -828,9 +874,9 @@
         if (event.message.conversationId === state.activeId) {
           const stick = atBottom();
           state.messages.push(event.message);
-          renderMessages();
-          if (stick) $('messageList').scrollTop = $('messageList').scrollHeight;
-          if (document.visibilityState === 'visible') markConversationRead();
+          if (!stick && event.message.senderId !== state.me.id) state.missedWhileUp += 1;
+          renderMessages({ toBottom: stick });
+          if (stick && document.visibilityState === 'visible') markConversationRead();
         } else if (event.message.senderId !== state.me.id && event.message.kind !== 'system') {
           conv.unread += 1;
           notify(conv, event.message);
@@ -1357,13 +1403,7 @@
   async function showWipeInfo() {
     try {
       const health = await fetch('/api/health').then((r) => r.json());
-      const { auto, intervalDays, nextWipeAt } = health.cleanup;
-      $('wipeInfo').textContent = auto
-        ? `پاکسازی خودکار پیام‌ها: ${new Date(nextWipeAt).toLocaleDateString('fa-IR', {
-            month: 'long',
-            day: 'numeric',
-          })} — هر ${fa(intervalDays)} روز`
-        : '';
+      $('wipeInfo').textContent = health.retentionNotice || '';
     } catch {
       /* نمایش این اطلاعات اختیاری است */
     }
@@ -1390,6 +1430,14 @@
   });
   $('messageList').addEventListener('scroll', () => {
     if ($('messageList').scrollTop < 60) loadOlderMessages();
+    updateJumpButton();
+  });
+  $('jumpToLatest').addEventListener('click', () => {
+    const list = $('messageList');
+    list.scrollTo({ top: list.scrollHeight, behavior: 'smooth' });
+    state.missedWhileUp = 0;
+    markConversationRead();
+    updateJumpButton();
   });
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && state.activeId) markConversationRead();

@@ -212,8 +212,12 @@ button { cursor: pointer; }
 .chat-title { flex: 1; min-width: 0; line-height: 1.3; }
 .chat-title strong { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
+/* ناحیه‌ی پیام‌ها، تا دکمه‌ی شناور بتواند نسبت به آن جا بگیرد */
+.message-area { position: relative; flex: 1; min-height: 0; display: flex; }
+
 .message-list {
-  flex: 1; overflow-y: auto; padding: 14px 12px 6px;
+  flex: 1; overflow-y: auto; overscroll-behavior: contain;
+  padding: 14px 12px 6px; scroll-behavior: smooth;
   display: flex; flex-direction: column; gap: 4px;
   background:
     radial-gradient(900px 400px at 100% 0%, rgba(75, 59, 255, .09), transparent 60%),
@@ -241,7 +245,7 @@ button { cursor: pointer; }
   max-width: min(78%, 560px);
   background: var(--bubble-them);
   border-radius: 16px;
-  padding: 7px 11px 5px;
+  padding: 7px 11px 6px;
   position: relative;
   word-wrap: break-word;
   overflow-wrap: anywhere;
@@ -249,6 +253,11 @@ button { cursor: pointer; }
 .message-row.mine .bubble { background: var(--bubble-me); border-end-end-radius: 6px; }
 .message-row.theirs .bubble { border-end-start-radius: 6px; }
 .bubble.grouped { margin-top: 2px; }
+
+/* حباب فقط-عکس: عکس تا لبه می‌رود و زمان روی نوار باریک زیرش می‌نشیند */
+.bubble.media { padding: 4px 4px 2px; }
+.bubble.media .bubble-image { margin-bottom: 0; border-radius: 13px; }
+.bubble.media .bubble-meta { padding: 3px 6px 0; }
 
 .bubble-author { font-size: 12px; font-weight: 700; color: #93c5fd; margin-bottom: 2px; }
 .bubble-text { white-space: pre-wrap; }
@@ -261,18 +270,48 @@ button { cursor: pointer; }
 }
 .bubble-reply small { display: block; color: #bfdbfe; }
 
+/* نسبت ابعاد از روی خود عکس ست می‌شود تا موقع بارگذاری چیدمان نپرد. */
 .bubble-image {
   display: block; margin: 0 0 4px; border-radius: 12px; overflow: hidden;
-  background: rgba(0, 0, 0, .25); border: 0; padding: 0; width: 100%;
+  background: rgba(0, 0, 0, .28); border: 0; padding: 0;
+  width: 100%; max-height: 62vh;
 }
-.bubble-image img { display: block; width: 100%; max-height: 62vh; object-fit: cover; }
+.bubble-image img { display: block; width: 100%; height: 100%; object-fit: cover; }
 
 .bubble-meta {
   display: flex; align-items: center; gap: 5px; justify-content: flex-start;
-  font-size: 11px; color: rgba(232, 238, 246, .65); margin-top: 2px;
+  font-size: 11px; color: rgba(232, 238, 246, .62); margin-top: 3px;
+  direction: ltr;
 }
-.tick { font-size: 12px; letter-spacing: -2px; }
-.tick.read { color: #7dd3fc; }
+.message-row.theirs .bubble-meta { color: var(--muted); }
+
+/* تیک وضعیت: در حال ارسال → ارسال شد → خوانده شد */
+.tick { display: inline-flex; align-items: center; }
+.tick svg {
+  width: 16px; height: 16px;
+  fill: none; stroke: currentColor;
+  stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round;
+}
+.tick-pending { opacity: .7; }
+.tick-pending svg { stroke-width: 1.8; }
+.tick-read { color: var(--brand-dot); }
+
+/* دکمه‌ی شناور رفتن به آخرین پیام */
+.jump-btn {
+  position: absolute; inset-inline-end: 14px; bottom: 14px;
+  width: 42px; height: 42px; border-radius: 50%;
+  border: 1px solid var(--line); background: var(--bg-3); color: var(--text);
+  display: grid; place-items: center; z-index: 5;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, .45);
+}
+.jump-btn:active { background: var(--line); }
+.jump-badge {
+  position: absolute; top: -6px; inset-inline-start: -6px;
+  min-width: 20px; height: 20px; padding: 0 5px;
+  border-radius: 999px; background: var(--accent); color: #fff;
+  font-size: 11px; font-weight: 700;
+  display: grid; place-items: center;
+}
 
 .bubble-actions {
   position: absolute; top: 2px; inset-inline-end: -34px;

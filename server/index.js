@@ -15,6 +15,15 @@ const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || '0.0.0.0';
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 
+/**
+ * نوشته‌ای که پایین ستون گفتگوها به کاربر نشان داده می‌شود.
+ * فقط یک اطلاع‌رسانی است و خودش چیزی را پاک نمی‌کند؛ پاکسازی از پنل مدیریت
+ * انجام می‌شود. برای عوض کردن متن یا برداشتنش RETENTION_NOTICE را ست کنید
+ * (رشته‌ی خالی یعنی چیزی نشان داده نشود).
+ */
+const RETENTION_NOTICE =
+  process.env.RETENTION_NOTICE ?? 'پیام‌ها و عکس‌ها به‌صورت دوره‌ای پاک می‌شوند';
+
 const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', true);
@@ -28,6 +37,7 @@ app.get('/api/health', (req, res) => {
     users: store.countUsers(),
     maxImageBytes: MAX_IMAGE_BYTES,
     cleanup: wipeStatus(),
+    retentionNotice: RETENTION_NOTICE,
   });
 });
 
