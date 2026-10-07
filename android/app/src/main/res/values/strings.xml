@@ -1,7 +1,7 @@
 <resources>
-    <string name="app_name">پیام‌رسان</string>
+    <string name="app_name">9chat</string>
     <string name="server_dialog_title">نشانی سرور</string>
-    <string name="server_dialog_message">نشانی سرور پیام‌رسان را وارد کنید (مثال: http://192.168.1.5:3000)</string>
+    <string name="server_dialog_message">نشانی سرور 9chat را وارد کنید (مثال: http://192.168.1.5:3000)</string>
     <string name="save">ذخیره</string>
     <string name="cancel">انصراف</string>
     <string name="retry">تلاش دوباره</string>

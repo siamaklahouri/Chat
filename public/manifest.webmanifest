@@ -1,7 +1,7 @@
 {
-  "name": "پیام‌رسان",
-  "short_name": "پیام‌رسان",
-  "description": "گفتگو و ارسال عکس، ساده و سریع",
+  "name": "9chat",
+  "short_name": "9chat",
+  "description": "9chat — گفتگو و ارسال عکس",
   "lang": "fa",
   "dir": "rtl",
   "start_url": "/",

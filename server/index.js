@@ -71,7 +71,7 @@ startScheduler();
 if (require.main === module) {
   server.listen(PORT, HOST, () => {
     const status = wipeStatus();
-    console.log(`پیام‌رسان روی http://${HOST}:${PORT} اجرا شد`);
+    console.log(`9chat روی http://${HOST}:${PORT} اجرا شد`);
     console.log(`پنل مدیریت: http://${HOST}:${PORT}/admin`);
     console.log(`پاکسازی بعدی داده‌ها: ${new Date(status.nextWipeAt).toLocaleString('fa-IR')}`);
     if (store.countUsers() === 0) {
