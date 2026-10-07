@@ -66,7 +66,24 @@ sudo bash deploy/deploy.sh chat.example.com you@mail.com
 - پنل مدیریت: `https://chat.example.com/admin`
 - **نخستین حسابی که ثبت‌نام کند خودکار مدیر می‌شود** — بلافاصله پس از بالا آمدن بسازیدش.
 
-پشتیبان‌گیری: `bash deploy/backup.sh` (یک فایل `tar.gz` از پایگاه‌داده و عکس‌ها).
+پشتیبان‌گیری: `bash deploy/backup.sh` (نصب داکری) یا
+`bash deploy/backup-native.sh` (نصب با systemd) — یک فایل `tar.gz` از
+پایگاه‌داده و عکس‌ها، با چرخش خودکار نسخه‌های قدیمی.
+
+برای اجرای هفتگی:
+
+```bash
+(crontab -l 2>/dev/null; echo "0 3 * * 1 /opt/9chat/deploy/backup-native.sh /var/backups/9chat 8 >> /var/log/9chat-backup.log 2>&1") | crontab -
+```
+
+بازیابی: آرشیو را در پوشه‌ی داده باز کنید و سرویس را دوباره راه بیندازید:
+
+```bash
+systemctl stop 9chat
+tar xzf /var/backups/9chat/9chat-<تاریخ>.tar.gz -C /var/lib/9chat
+chown -R messenger:messenger /var/lib/9chat
+systemctl start 9chat
+```
 
 برای اجرای خودکار هفتگی پشتیبان‌گیری:
 
