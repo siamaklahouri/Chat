@@ -3,6 +3,7 @@
 | وضعیت سرور | اسکریپت | چه می‌کند |
 | --- | --- | --- |
 | **سرور از قبل سایت دارد** | `deploy/deploy-vhost.sh` | کنار nginx موجود می‌نشیند، پورت ۸۰/۴۴۳ را نمی‌گیرد |
+| **Docker Hub در دسترس نیست** | `deploy/deploy-native.sh` | بدون داکر، با Node و systemd — بقیه‌ی رفتارش مثل بالایی |
 | سرور خالی است | `deploy/deploy.sh` | Caddy را با HTTPS خودکار روی ۸۰/۴۴۳ بالا می‌آورد |
 | بدون داکر | `deploy/messenger.service` | اجرا با systemd |
 | بدون دامنه / بدون اینترنت | `npm start` | اتصال با IP در شبکه‌ی محلی |
@@ -28,6 +29,23 @@ sudo bash deploy/deploy-vhost.sh 9chat.ir you@mail.com
 
 اگر وب‌سرور سرور apache است، اسکریپت متوقف می‌شود و مراحل دستی را چاپ می‌کند
 (قالبش در `deploy/apache-vhost.conf.template` هست).
+
+### وقتی سرور به Docker Hub دسترسی ندارد
+
+روی بسیاری از سرورهای داخل ایران، کشیدن ایمیج از Docker Hub با خطای
+`403 Forbidden` شکست می‌خورد. در این حالت از نسخه‌ی بدون داکر استفاده کنید:
+
+```bash
+sudo bash deploy/deploy-native.sh 9chat.ir you@mail.com
+
+# یا وقتی دامنه هنوز فعال نشده و فقط می‌خواهید برنامه بالا بیاید:
+sudo APP_ONLY=1 bash deploy/deploy-native.sh 9chat.ir
+```
+
+برنامه را با Node و systemd اجرا می‌کند (سرویس `9chat`)، زیر یک کاربر سیستمی
+بدون شل، با داده‌ها در `/var/lib/9chat`. چون برنامه به `node:sqlite` نیاز دارد،
+اسکریپت بین نسخه‌های نصب‌شده‌ی Node آن‌یکی را پیدا و در سرویس پین می‌کند که
+نسخه‌اش ۲۲ یا بالاتر است.
 
 ## ۱) استقرار با داکر (پیشنهادی)
 
