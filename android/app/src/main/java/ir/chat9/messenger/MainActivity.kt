@@ -1,4 +1,4 @@
-package com.example.messenger
+package ir.chat9.messenger
 
 import android.Manifest
 import android.annotation.SuppressLint
@@ -26,7 +26,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
-import com.example.messenger.databinding.ActivityMainBinding
+import ir.chat9.messenger.databinding.ActivityMainBinding
 import java.io.File
 
 /**

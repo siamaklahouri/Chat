@@ -13,19 +13,19 @@ val keystoreProperties = Properties().apply {
 }
 
 android {
-    namespace = "com.example.messenger"
+    namespace = "ir.chat9.messenger"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.example.messenger"
+        applicationId = "ir.chat9.messenger"
         minSdk = 24
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
 
-        // نشانی سرور پیام‌رسان؛ هنگام بیلد قابل تغییر است و کاربر هم می‌تواند
-        // در خود برنامه آن را عوض کند (منوی «تنظیم نشانی سرور»).
-        buildConfigField("String", "DEFAULT_SERVER_URL", "\"http://10.0.2.2:3000\"")
+        // نشانی پیش‌فرض سرور. کاربر می‌تواند در خود برنامه عوضش کند — مثلاً
+        // برای وصل شدن به یک سرور محلی وقتی اینترنت در دسترس نیست.
+        buildConfigField("String", "DEFAULT_SERVER_URL", "\"https://9chat.ir\"")
     }
 
     signingConfigs {

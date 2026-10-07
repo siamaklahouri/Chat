@@ -8,7 +8,7 @@
 set -euo pipefail
 
 TARGET="${1:-}"
-COMPOSE="$(dirname "$0")/docker-compose.yml"
+CONTAINER="${CONTAINER:-messenger}"
 
 if [[ -z "$TARGET" ]]; then
   echo "کاربرد: bash deploy/sync-standby.sh user@host" >&2
@@ -19,13 +19,12 @@ STAGING="$(mktemp -d)"
 trap 'rm -rf "$STAGING"' EXIT
 
 echo "==> گرفتن نسخه‌ی سالم از پایگاه‌داده"
-docker compose -f "$COMPOSE" exec -T app node -e "
+docker exec "$CONTAINER" node -e "
   const { DatabaseSync } = require('node:sqlite');
   new DatabaseSync('/data/chat.db').exec(\"VACUUM INTO '/data/sync.db'\");
 "
-docker compose -f "$COMPOSE" exec -T app tar cf - -C /data sync.db uploads \
-  | tar xf - -C "$STAGING"
-docker compose -f "$COMPOSE" exec -T app rm -f /data/sync.db
+docker exec "$CONTAINER" tar cf - -C /data sync.db uploads | tar xf - -C "$STAGING"
+docker exec "$CONTAINER" rm -f /data/sync.db
 mv "$STAGING/sync.db" "$STAGING/chat.db"
 
 echo "==> ارسال به $TARGET"

@@ -62,7 +62,13 @@ npm run icons                              # ساخت دوباره‌ی آیکو
 
 ## استقرار روی سرور (دسترسی از هر جا)
 
-با یک دستور روی یک سرور تازه، همراه HTTPS خودکار:
+روی سروری که از قبل سایت دیگری دارد (پورت ۸۰ و ۴۴۳ را نمی‌گیرد):
+
+```bash
+sudo bash deploy/deploy-vhost.sh chat.example.com you@mail.com
+```
+
+روی سرور خالی، همراه HTTPS خودکار با Caddy:
 
 ```bash
 sudo bash deploy/deploy.sh chat.example.com you@mail.com

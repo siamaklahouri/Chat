@@ -1,0 +1,23 @@
+# اجرای پیام‌رسان کنار وب‌سرور موجود سرور (nginx یا apache).
+#
+# این فایل عمداً پورت ۸۰ و ۴۴۳ را نمی‌گیرد؛ فقط روی 127.0.0.1 گوش می‌دهد و
+# وب‌سرور خود سرور جلوی آن قرار می‌گیرد. پس سایت‌های دیگر دست‌نخورده می‌مانند.
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: messenger
+    restart: unless-stopped
+    environment:
+      - PORT=3000
+      - DATA_DIR=/data
+      - MAX_IMAGE_BYTES=${MAX_IMAGE_BYTES:-8388608}
+    volumes:
+      - messenger-data:/data
+    ports:
+      # فقط از خود سرور قابل دسترس است، نه از اینترنت.
+      - "127.0.0.1:${APP_PORT:-3000}:3000"
+
+volumes:
+  messenger-data:

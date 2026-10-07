@@ -1,0 +1,25 @@
+# اگر وب‌سرور سرور apache است، این فایل را در sites-available بگذارید.
+# ماژول‌های لازم: proxy, proxy_http, proxy_wstunnel, rewrite
+#   a2enmod proxy proxy_http proxy_wstunnel rewrite
+#   a2ensite __DOMAIN__ && systemctl reload apache2
+# سپس: certbot --apache -d __DOMAIN__ -d www.__DOMAIN__
+<VirtualHost *:80>
+    ServerName __DOMAIN__
+    ServerAlias www.__DOMAIN__
+
+    ProxyPreserveHost On
+    ProxyRequests Off
+
+    # وب‌سوکت باید پیش از پراکسی معمولی تطبیق داده شود.
+    RewriteEngine On
+    RewriteCond %{HTTP:Upgrade} =websocket [NC]
+    RewriteRule ^/?(.*) ws://127.0.0.1:__APP_PORT__/$1 [P,L]
+
+    ProxyPass        / http://127.0.0.1:__APP_PORT__/
+    ProxyPassReverse / http://127.0.0.1:__APP_PORT__/
+
+    LimitRequestBody 12582912
+
+    ErrorLog  ${APACHE_LOG_DIR}/__DOMAIN__.error.log
+    CustomLog ${APACHE_LOG_DIR}/__DOMAIN__.access.log combined
+</VirtualHost>
