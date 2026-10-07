@@ -4,6 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
 <meta name="theme-color" content="#0f1720" />
+<link rel="preload" href="/fonts/outfit-600-latin.woff2" as="font" type="font/woff2" crossorigin />
 <meta name="description" content="9chat — چت و ارسال عکس" />
 <meta name="mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -20,10 +21,16 @@
 <section id="authScreen" class="screen auth-screen">
   <div class="auth-card">
     <div class="brand">
-      <div class="brand-logo" aria-hidden="true">
-        <svg viewBox="0 0 24 24" width="30" height="30"><path fill="currentColor" d="M12 3C6.98 3 3 6.58 3 11c0 2.34 1.12 4.43 2.9 5.86L5 21l4.4-2.1c.83.2 1.7.3 2.6.3 5.02 0 9-3.58 9-8s-3.98-8-9-8Z"/></svg>
-      </div>
-      <h1>9chat</h1>
+      <h1 class="brand-lockup" aria-label="9chat">
+        <svg class="brand-mark" viewBox="22.5 14.5 61 73" aria-hidden="true">
+          <g fill="none" stroke="currentColor" stroke-width="11">
+            <circle cx="50" cy="42" r="22"/>
+            <path d="M72 42 V60 Q72 82 46 82" stroke-linecap="round"/>
+          </g>
+          <circle cx="50" cy="42" r="5.5" fill="#2ee6a6"/>
+        </svg>
+        <span class="brand-word">chat</span>
+      </h1>
       <p class="muted">گفتگو و ارسال عکس، ساده و سریع</p>
     </div>
 

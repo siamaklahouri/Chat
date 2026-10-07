@@ -1,13 +1,13 @@
 {
   "name": "messenger",
   "version": "1.0.0",
-  "description": "پیام‌رسان ساده: چت، ارسال عکس، پنل مدیریت و پاکسازی هفتگی داده‌ها",
+  "description": "9chat — پیام‌رسان ساده: چت، ارسال عکس، پنل مدیریت و پاکسازی هفتگی داده‌ها",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
     "test": "node --test test/api.test.js",
-    "icons": "node scripts/make-icons.js",
+    "icons": "node brand/render-icons.js",
     "create-admin": "node scripts/create-admin.js",
     "wipe": "node scripts/wipe-now.js"
   },

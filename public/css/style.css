@@ -1,5 +1,16 @@
 /* 9chat — طرح تیره، موبایل‌محور و راست‌چین */
 
+/* فونت واژه‌نشان، محلی میزبانی می‌شود تا برنامه به هیچ سرویس بیرونی وابسته نباشد
+   (در قطعی اینترنت هم باید کامل بالا بیاید). فقط لاتین است، پس متن فارسی
+   به‌صورت خودکار روی فونت سیستم می‌افتد. */
+@font-face {
+  font-family: 'Outfit';
+  src: url('/fonts/outfit-600-latin.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   --bg: #0b1016;
   --bg-2: #121a24;
@@ -7,12 +18,13 @@
   --line: #24303f;
   --text: #e8eef6;
   --muted: #8ea0b5;
-  --accent: #3b82f6;
-  --accent-2: #2563eb;
-  --bubble-me: #1d4ed8;
+  --accent: #4b3bff;
+  --accent-2: #3d2fe6;
+  --bubble-me: #4033cc;
   --bubble-them: #1b2634;
   --danger: #ef4444;
-  --ok: #22c55e;
+  --ok: #2ee6a6;
+  --brand-dot: #2ee6a6;
   --radius: 16px;
   --header-h: 60px;
   --safe-top: env(safe-area-inset-top, 0px);
@@ -45,7 +57,7 @@ button { cursor: pointer; }
   display: grid;
   place-items: center;
   padding: 20px;
-  background: radial-gradient(1200px 600px at 50% -10%, #17263c 0%, var(--bg) 60%);
+  background: radial-gradient(1200px 600px at 50% -10%, #1b1840 0%, var(--bg) 60%);
 }
 
 .auth-card {
@@ -58,13 +70,23 @@ button { cursor: pointer; }
 }
 
 .brand { text-align: center; margin-bottom: 18px; }
-.brand h1 { margin: 10px 0 2px; font-size: 22px; }
-.brand-logo {
-  width: 56px; height: 56px; margin: 0 auto;
-  display: grid; place-items: center;
-  border-radius: 18px; color: #fff;
-  background: linear-gradient(140deg, var(--accent), #8b5cf6);
+
+/* قفل‌شده‌ی برند: نشانِ ۹ کنار واژه‌ی chat — با هم «9chat» را می‌سازند. */
+.brand-lockup {
+  margin: 0 0 4px;
+  /* لوگو همیشه چپ‌به‌راست می‌ماند، وگرنه در صفحه‌ی راست‌چین «chat9» خوانده می‌شود. */
+  direction: ltr;
+  display: flex; align-items: center; justify-content: center; gap: 7px;
 }
+.brand-mark { width: 40px; height: 48px; color: #fff; flex: none; }
+.brand-word {
+  font-family: 'Outfit', system-ui, sans-serif;
+  font-weight: 600; font-size: 44px; line-height: 1;
+  letter-spacing: -.03em; color: #fff; margin-top: 5px;
+}
+
+/* همان نشان، کوچک، برای سربرگ پنل مدیریت */
+.mark-sm { width: 20px; height: 24px; color: var(--text); flex: none; }
 
 .tabs {
   display: flex; gap: 6px; padding: 5px;
@@ -194,7 +216,7 @@ button { cursor: pointer; }
   flex: 1; overflow-y: auto; padding: 14px 12px 6px;
   display: flex; flex-direction: column; gap: 4px;
   background:
-    radial-gradient(900px 400px at 100% 0%, rgba(59, 130, 246, .07), transparent 60%),
+    radial-gradient(900px 400px at 100% 0%, rgba(75, 59, 255, .09), transparent 60%),
     var(--bg);
 }
 

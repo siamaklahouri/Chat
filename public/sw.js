@@ -1,5 +1,5 @@
 /* سرویس‌ورکر — فقط پوسته‌ی برنامه را کش می‌کند تا آفلاین هم باز شود. */
-const CACHE = 'messenger-shell-v1';
+const CACHE = '9chat-shell-v2';
 const SHELL = [
   '/',
   '/index.html',
@@ -7,6 +7,7 @@ const SHELL = [
   '/js/app.js',
   '/manifest.webmanifest',
   '/icons/icon-192.png',
+  '/fonts/outfit-600-latin.woff2',
 ];
 
 self.addEventListener('install', (event) => {

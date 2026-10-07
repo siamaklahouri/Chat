@@ -1,0 +1,8 @@
+<!-- نشان 9chat — عدد ۹ خطی با نقطه‌ی تاکید سبز. رنگ خط از currentColor می‌آید. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="22.5 14.5 61 73" width="61" height="73" role="img" aria-label="9chat">
+  <g fill="none" stroke="currentColor" stroke-width="11">
+    <circle cx="50" cy="42" r="22"/>
+    <path d="M72 42 V60 Q72 82 46 82" stroke-linecap="round"/>
+  </g>
+  <circle cx="50" cy="42" r="5.5" fill="#2EE6A6"/>
+</svg>
