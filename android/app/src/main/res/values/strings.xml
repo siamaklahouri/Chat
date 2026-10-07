@@ -11,6 +11,4 @@
     <string name="notification_channel_messages">پیام‌های تازه</string>
     <string name="notification_channel_description">اعلان پیام‌های دریافتی 9chat</string>
     <string name="notification_permission_needed">برای دریافت اعلان، اجازه‌ی اعلان را بدهید.</string>
-    <string name="notification_channel_service">اتصال پس‌زمینه</string>
-    <string name="service_running">9chat برای دریافت پیام‌ها متصل است</string>
 </resources>

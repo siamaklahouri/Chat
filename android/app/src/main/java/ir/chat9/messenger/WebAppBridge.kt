@@ -66,26 +66,6 @@ class WebAppBridge(
         onPermissionNeeded()
     }
 
-    /**
-     * صفحه بعد از ورود، نشست را اینجا می‌گذارد تا سرویس پس‌زمینه بتواند با
-     * بسته بودن برنامه هم به سرور وصل بماند و اعلان بدهد.
-     */
-    @JavascriptInterface
-    fun setSession(token: String?, serverUrl: String?) {
-        if (!isTrustedPage()) return
-        if (token.isNullOrBlank() || serverUrl.isNullOrBlank()) return
-        Session.save(context, token, serverUrl)
-        MessageService.start(context)
-    }
-
-    /** موقع خروج از حساب: سرویس خاموش و نشست پاک می‌شود. */
-    @JavascriptInterface
-    fun clearSession() {
-        if (!isTrustedPage()) return
-        Session.clear(context)
-        MessageService.stop(context)
-    }
-
     private fun ensureChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val manager = context.getSystemService(NotificationManager::class.java) ?: return

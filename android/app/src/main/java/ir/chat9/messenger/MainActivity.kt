@@ -97,8 +97,6 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
-        MessageService.start(this)   // اگر از قبل وارد شده، اتصال پس‌زمینه را برقرار کن
-
         if (savedInstanceState != null) {
             binding.webView.restoreState(savedInstanceState)
         } else if (prefs.getString(KEY_SERVER, null) == null) {
@@ -275,27 +273,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_LONG).show()
 
-    override fun onResume() {
-        super.onResume()
-        isInForeground = true
-    }
-
-    override fun onPause() {
-        isInForeground = false
-        super.onPause()
-    }
-
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         binding.webView.saveState(outState)
     }
 
-    companion object {
-        /** سرویس پس‌زمینه وقتی برنامه جلوی چشم کاربر است اعلان نمی‌دهد. */
-        @Volatile
-        var isInForeground = false
-
-        private const val PREFS = "messenger-prefs"
-        private const val KEY_SERVER = "server-url"
+    private companion object {
+        const val PREFS = "messenger-prefs"
+        const val KEY_SERVER = "server-url"
     }
 }

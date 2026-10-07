@@ -70,6 +70,4 @@ dependencies {
     implementation("androidx.activity:activity-ktx:1.9.1")
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
     implementation("com.google.android.material:material:1.12.0")
-    // برای اتصال دائمی سرویس پس‌زمینه به سرور خودمان (بدون هیچ سرویس گوگلی)
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 }

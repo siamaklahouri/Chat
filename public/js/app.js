@@ -172,11 +172,6 @@
   });
 
   function signOut(message) {
-    try {
-      window.AndroidBridge?.clearSession?.();
-    } catch {
-      /* در مرورگر معمولی پلی وجود ندارد */
-    }
     state.token = null;
     state.me = null;
     state.activeId = null;
@@ -1304,11 +1299,6 @@
           });
           state.token = data.token;
           localStorage.setItem(TOKEN_KEY, data.token);
-          try {
-            window.AndroidBridge?.setSession?.(data.token, location.origin);
-          } catch {
-            /* فقط در اپ اندروید معنی دارد */
-          }
           currentPassword.value = '';
           newPassword.value = '';
           toast(data.message);
@@ -1504,14 +1494,6 @@
     connectSocket();
     showWipeInfo();
     requestNotificationPermission();
-
-    // اپ اندروید نشست را نگه می‌دارد تا سرویس پس‌زمینه‌اش، حتی با بسته بودن
-    // برنامه، به سرور وصل بماند و اعلان بدهد.
-    try {
-      window.AndroidBridge?.setSession?.(state.token, location.origin);
-    } catch {
-      /* در مرورگر معمولی پلی وجود ندارد */
-    }
   }
 
   $('newChatBtn').addEventListener('click', newChatModal);
