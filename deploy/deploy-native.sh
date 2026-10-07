@@ -10,11 +10,13 @@ set -euo pipefail
 
 DOMAIN="${1:-}"
 EMAIL="${2:-}"
+APP_PORT_FROM_ENV="${APP_PORT:-}"
 APP_PORT="${APP_PORT:-3000}"
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SERVICE_USER="${SERVICE_USER:-messenger}"
 APP_DATA="${APP_DATA:-/var/lib/9chat}"
 SERVICE_NAME="9chat"
+UNIT_FILE="/etc/systemd/system/9chat.service"
 
 die() { echo "خطا: $*" >&2; exit 1; }
 info() { echo "==> $*"; }
@@ -75,18 +77,29 @@ npm ci --omit=dev --no-audit --no-fund || npm install --omit=dev --no-audit --no
   die "نصب وابستگی‌ها ناموفق بود (دسترسی به registry.npmjs.org را چک کنید)."
 
 # ------------------------------------------------------------------ پورت
-info "انتخاب پورت آزاد"
+# اگر سرویس از قبل نصب شده، همان پورتش را نگه می‌داریم. وگرنه هر بار اجرای
+# دوباره‌ی اسکریپت، پورت خودِ سرویس را «مشغول» می‌بیند و یکی جلوتر می‌رود —
+# که باعث می‌شود بلوک nginx به پورت قدیمی اشاره کند و سایت بالا نیاید.
+EXISTING_PORT="$(sed -n 's/^Environment=PORT=//p' "$UNIT_FILE" 2>/dev/null | head -1)"
 port_busy() { ss -ltn "sport = :$1" 2>/dev/null | grep -q LISTEN; }
-while port_busy "$APP_PORT"; do
-  echo "    پورت $APP_PORT مشغول است؛ بعدی امتحان می‌شود."
-  APP_PORT=$((APP_PORT + 1))
-  [[ $APP_PORT -lt 3100 ]] || die "پورت آزادی پیدا نشد."
-done
-echo "    پورت برنامه: 127.0.0.1:$APP_PORT"
+
+if [[ -z "$APP_PORT_FROM_ENV" && -n "$EXISTING_PORT" ]]; then
+  APP_PORT="$EXISTING_PORT"
+  info "پورت سرویس موجود حفظ شد: 127.0.0.1:$APP_PORT"
+else
+  info "انتخاب پورت آزاد"
+  systemctl stop "$SERVICE_NAME" 2>/dev/null || true   # تا پورت خودش را مشغول نبیند
+  while port_busy "$APP_PORT"; do
+    echo "    پورت $APP_PORT مشغول است؛ بعدی امتحان می‌شود."
+    APP_PORT=$((APP_PORT + 1))
+    [[ $APP_PORT -lt 3100 ]] || die "پورت آزادی پیدا نشد."
+  done
+  echo "    پورت برنامه: 127.0.0.1:$APP_PORT"
+fi
 
 # --------------------------------------------------------------- systemd
 info "نصب سرویس systemd"
-cat > "/etc/systemd/system/$SERVICE_NAME.service" <<UNIT
+cat > "$UNIT_FILE" <<UNIT
 [Unit]
 Description=9chat messenger
 After=network.target
@@ -156,7 +169,13 @@ VHOST="$AVAILABLE/$DOMAIN.conf"
 
 info "ساخت بلوک سرور برای $DOMAIN"
 if [[ -e "$VHOST" ]]; then
-  echo "    $VHOST از قبل هست؛ دست نمی‌زنم."
+  if grep -q "proxy_pass http://127.0.0.1:$APP_PORT;" "$VHOST"; then
+    echo "    $VHOST از قبل هست و به پورت درست اشاره می‌کند."
+  else
+    info "اصلاح پورت در $VHOST"
+    sed -i -E "s|proxy_pass http://127\.0\.0\.1:[0-9]+;|proxy_pass http://127.0.0.1:$APP_PORT;|" "$VHOST"
+    nginx -t && systemctl reload nginx
+  fi
 else
   sed -e "s/__DOMAIN__/$DOMAIN/g" -e "s/__APP_PORT__/$APP_PORT/g" \
     "$APP_DIR/deploy/nginx-vhost.conf.template" > "$VHOST"
@@ -173,18 +192,32 @@ fi
 
 # ----------------------------------------------------------------- HTTPS
 info "گرفتن گواهی HTTPS"
-command -v certbot >/dev/null 2>&1 ||
-  { apt-get update -qq && apt-get install -y -qq certbot python3-certbot-nginx; }
+if ! command -v certbot >/dev/null 2>&1; then
+  apt-get update -qq && apt-get install -y -qq certbot python3-certbot-nginx
+fi
+
+# certbot ممکن است نصب باشد ولی افزونه‌ی nginx جدا نصب نشده باشد.
+if ! certbot plugins --non-interactive 2>/dev/null | grep -qi nginx; then
+  info "نصب افزونه‌ی nginx برای certbot"
+  apt-get update -qq
+  apt-get install -y -qq python3-certbot-nginx || true
+fi
+HAS_NGINX_PLUGIN=0
+certbot plugins --non-interactive 2>/dev/null | grep -qi nginx && HAS_NGINX_PLUGIN=1
 
 CERTBOT_ARGS=(--nginx -d "$DOMAIN" -d "www.$DOMAIN" --redirect --non-interactive --agree-tos)
 [[ -n "$EMAIL" ]] && CERTBOT_ARGS+=(-m "$EMAIL") || CERTBOT_ARGS+=(--register-unsafely-without-email)
 
-if certbot "${CERTBOT_ARGS[@]}"; then
+SCHEME=http
+if [[ $HAS_NGINX_PLUGIN -ne 1 ]]; then
+  echo "    هشدار: افزونه‌ی nginx برای certbot نصب نشد."
+  echo "    دستی: apt install -y python3-certbot-nginx"
+elif certbot "${CERTBOT_ARGS[@]}"; then
   SCHEME=https
 else
-  SCHEME=http
-  echo "    هشدار: گواهی صادر نشد — معمولاً یعنی DNS هنوز به این سرور نرسیده."
-  echo "    بعداً: certbot --nginx -d $DOMAIN -d www.$DOMAIN --redirect"
+  echo "    هشدار: گواهی صادر نشد."
+  echo "    رایج‌ترین دلیل: رکورد DNS دامنه هنوز به این سرور نرسیده است."
+  echo "    بعد از آماده شدن DNS: certbot --nginx -d $DOMAIN -d www.$DOMAIN --redirect"
 fi
 
 cat <<DONE
