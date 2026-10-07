@@ -124,9 +124,10 @@ router.patch('/me', requireApproved, (req, res) => {
 });
 
 router.get('/users', requireApproved, (req, res) => {
-  const query = clean(req.query.q);
-  if (!query) return res.json({ users: [] });
-  res.json({ users: store.searchUsers(query, req.user.id).map(withPresence) });
+  // فقط تطبیق دقیقِ نام کاربری؛ هر ورودی‌ای که شکل نام کاربری ندارد، نتیجه‌ی خالی می‌دهد.
+  const handle = clean(req.query.q).replace(/^@/, '');
+  if (!USERNAME_RE.test(handle)) return res.json({ users: [] });
+  res.json({ users: store.findUserByHandle(handle, req.user.id).map(withPresence) });
 });
 
 /* ----------------------------- conversations ---------------------------- */

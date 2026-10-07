@@ -72,19 +72,18 @@
     $('statImages').textContent = fa(stats.images);
     $('statConversations').textContent = fa(stats.conversations);
 
-    const next = new Date(cleanup.nextWipeAt);
-    const last = cleanup.lastWipeAt ? new Date(cleanup.lastWipeAt) : null;
-    const format = (date) =>
-      date.toLocaleString('fa-IR', {
+    const format = (ts) =>
+      new Date(ts).toLocaleString('fa-IR', {
         year: 'numeric',
         month: 'long',
         day: 'numeric',
         hour: '2-digit',
         minute: '2-digit',
       });
-    $('wipeText').textContent =
-      `پاکسازی بعدی: ${format(next)}` +
-      (last ? ` — آخرین پاکسازی: ${format(last)}` : '');
+    const last = cleanup.lastWipeAt ? `آخرین پاکسازی: ${format(cleanup.lastWipeAt)}` : 'هنوز پاکسازی نشده';
+    $('wipeText').textContent = cleanup.auto
+      ? `پاکسازی خودکار هر ${fa(cleanup.intervalDays)} روز — بعدی: ${format(cleanup.nextWipeAt)} · ${last}`
+      : `پاکسازی خودکار خاموش است؛ هر وقت خواستید از همین‌جا دستی پاک کنید. ${last}`;
   }
 
   function actionButton(label, className, onClick) {

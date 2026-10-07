@@ -3,8 +3,16 @@
 const fs = require('node:fs');
 const { db, getMeta, setMeta, UPLOAD_DIR } = require('./db');
 
-const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
 const CHECK_INTERVAL_MS = 5 * 60 * 1000;
+
+/**
+ * پاکسازی خودکار پیش‌فرض خاموش است؛ مدیر هر وقت بخواهد از پنل دستی پاک می‌کند.
+ * برای روشن کردنش، تعداد روز را در CLEANUP_INTERVAL_DAYS بگذارید (مثلاً 7).
+ */
+const INTERVAL_DAYS = Math.max(0, Number(process.env.CLEANUP_INTERVAL_DAYS || 0));
+const INTERVAL_MS = INTERVAL_DAYS * DAY_MS;
+const isAuto = () => INTERVAL_DAYS > 0;
 
 /**
  * Wipes every message and uploaded image. Accounts, groups, memberships and
@@ -36,19 +44,21 @@ function wipeMessages(reason = 'scheduled') {
 }
 
 const lastWipeAt = () => Number(getMeta('last_wipe_at', 0)) || 0;
-const nextWipeAt = () => lastWipeAt() + WEEK_MS;
+const nextWipeAt = () => (isAuto() ? lastWipeAt() + INTERVAL_MS : null);
 
 function wipeStatus() {
   return {
+    auto: isAuto(),
+    intervalDays: INTERVAL_DAYS,
     lastWipeAt: lastWipeAt() || null,
     lastWipeReason: getMeta('last_wipe_reason', null),
     nextWipeAt: nextWipeAt(),
-    intervalDays: 7,
   };
 }
 
-/** Runs the wipe when a full week has passed; also catches up after downtime. */
+/** وقتی پاکسازی خودکار روشن باشد و موعدش رسیده باشد اجرا می‌کند (عقب‌افتادگی را هم جبران می‌کند). */
 function runIfDue() {
+  if (!isAuto()) return null;
   if (!lastWipeAt()) {
     setMeta('last_wipe_at', Date.now());
     setMeta('last_wipe_reason', 'initial');
@@ -59,10 +69,14 @@ function runIfDue() {
 }
 
 function startScheduler() {
+  if (!isAuto()) {
+    console.log('پاکسازی خودکار خاموش است — پاکسازی فقط دستی از پنل مدیریت انجام می‌شود.');
+    return null;
+  }
   runIfDue();
   const timer = setInterval(runIfDue, CHECK_INTERVAL_MS);
   timer.unref?.();
   return timer;
 }
 
-module.exports = { wipeMessages, wipeStatus, runIfDue, startScheduler, WEEK_MS };
+module.exports = { wipeMessages, wipeStatus, runIfDue, startScheduler, INTERVAL_DAYS };

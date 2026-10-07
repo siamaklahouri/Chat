@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- آیکون نوار وضعیت: باید تک‌رنگ و توپر باشد، وگرنه اندروید آن را مربع سفید نشان می‌دهد. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108"
+    android:tint="#FFFFFF">
+
+    <group
+        android:pivotX="53"
+        android:pivotY="51"
+        android:scaleX="0.9"
+        android:scaleY="0.9"
+        android:translateX="1"
+        android:translateY="3">
+        <path
+            android:pathData="M50,20 a22,22 0 1,0 0,44 a22,22 0 1,0 0,-44"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="11" />
+        <path
+            android:pathData="M72,42 V60 Q72,82 46,82"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="11"
+            android:strokeLineCap="round" />
+    </group>
+</vector>

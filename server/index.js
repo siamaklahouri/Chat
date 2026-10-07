@@ -73,7 +73,11 @@ if (require.main === module) {
     const status = wipeStatus();
     console.log(`9chat روی http://${HOST}:${PORT} اجرا شد`);
     console.log(`پنل مدیریت: http://${HOST}:${PORT}/admin`);
-    console.log(`پاکسازی بعدی داده‌ها: ${new Date(status.nextWipeAt).toLocaleString('fa-IR')}`);
+    console.log(
+      status.auto
+        ? `پاکسازی خودکار هر ${status.intervalDays} روز — بعدی: ${new Date(status.nextWipeAt).toLocaleString('fa-IR')}`
+        : 'پاکسازی خودکار خاموش است (فقط دستی از پنل مدیریت)'
+    );
     if (store.countUsers() === 0) {
       console.log('هنوز کاربری وجود ندارد — نخستین حساب ثبت‌شده به‌صورت خودکار مدیر می‌شود.');
     }

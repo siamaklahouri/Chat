@@ -1,5 +1,5 @@
 /* سرویس‌ورکر — فقط پوسته‌ی برنامه را کش می‌کند تا آفلاین هم باز شود. */
-const CACHE = '9chat-shell-v2';
+const CACHE = '9chat-shell-v3';
 const SHELL = [
   '/',
   '/index.html',
@@ -44,5 +44,22 @@ self.addEventListener('fetch', (event) => {
           })
           .catch(() => caches.match('/index.html'))
     )
+  );
+});
+
+/* کلیک روی اعلان: اگر پنجره‌ی برنامه باز است همان را جلو می‌آورد، وگرنه بازش می‌کند. */
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const target = event.notification.data?.url || '/';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windows) => {
+      for (const client of windows) {
+        if ('focus' in client) {
+          client.postMessage({ type: 'open-conversation', conversationId: event.notification.data?.conversationId });
+          return client.focus();
+        }
+      }
+      return self.clients.openWindow(target);
+    })
   );
 });

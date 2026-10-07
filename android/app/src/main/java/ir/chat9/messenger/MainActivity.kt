@@ -24,6 +24,7 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import ir.chat9.messenger.databinding.ActivityMainBinding
@@ -65,6 +66,11 @@ class MainActivity : AppCompatActivity() {
             }
             callback.onReceiveValue(uris)
             cameraImageUri = null
+        }
+
+    private val notificationPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (!granted) toast(getString(R.string.notification_permission_needed))
         }
 
     private val cameraPermissionLauncher =
@@ -113,6 +119,16 @@ class MainActivity : AppCompatActivity() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) safeBrowsingEnabled = true
         }
         setBackgroundColor(ContextCompat.getColor(this@MainActivity, R.color.background))
+
+        // پل اعلان؛ فقط برای صفحه‌هایی از سرور خودمان فعال است.
+        addJavascriptInterface(
+            WebAppBridge(
+                context = this@MainActivity,
+                isTrustedPage = { url?.startsWith(serverUrl) == true },
+                onPermissionNeeded = { ensureNotificationPermission() }
+            ),
+            "AndroidBridge"
+        )
 
         webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
@@ -206,6 +222,16 @@ class MainActivity : AppCompatActivity() {
             addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
         }
     }.getOrNull()
+
+    /** در اندروید ۱۳ به بالا، اعلان اجازه‌ی جداگانه می‌خواهد. */
+    private fun ensureNotificationPermission() {
+        if (NotificationManagerCompat.from(this).areNotificationsEnabled()) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            toast(getString(R.string.notification_permission_needed))
+        }
+    }
 
     private fun hasCameraPermission() =
         ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) ==

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  لایه‌ی جلویی آیکون تطبیقی: نشان ۹ به‌صورت وکتور.
+  بوم ۱۰۸×۱۰۸ است ولی اندروید فقط ۷۲×۷۲ وسط را تضمین می‌کند (ناحیه‌ی امن)،
+  پس نشان طوری مقیاس خورده که داخل همان بماند و با هیچ ماسکی بریده نشود.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <group
+        android:pivotX="53"
+        android:pivotY="51"
+        android:scaleX="0.794"
+        android:scaleY="0.794"
+        android:translateX="1"
+        android:translateY="3">
+
+        <!-- کاسه‌ی ۹ -->
+        <path
+            android:pathData="M50,20 a22,22 0 1,0 0,44 a22,22 0 1,0 0,-44"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="11" />
+
+        <!-- دنباله‌ی ۹ -->
+        <path
+            android:pathData="M72,42 V60 Q72,82 46,82"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="11"
+            android:strokeLineCap="round" />
+
+        <!-- نقطه‌ی تاکید سبز -->
+        <path
+            android:pathData="M50,36.5 a5.5,5.5 0 1,0 0,11 a5.5,5.5 0 1,0 0,-11"
+            android:fillColor="#2EE6A6" />
+    </group>
+</vector>

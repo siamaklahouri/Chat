@@ -379,22 +379,77 @@ test('پاکسازی، پیام‌ها و فایل‌ها را حذف و حسا�
   for (const socket of context.sockets) socket.close();
 });
 
-test('زمان‌بند، پاکسازی عقب‌افتاده را جبران می‌کند', async () => {
+test('پاکسازی خودکار به‌صورت پیش‌فرض خاموش است', async () => {
   const { setMeta } = require('../server/db.js');
-  const { runIfDue } = require('../server/cleanup.js');
+  const { runIfDue, wipeStatus } = require('../server/cleanup.js');
 
   await call(`/api/conversations/${context.conversationId}/messages`, {
     method: 'POST',
     token: context.adminToken,
-    body: { body: 'پیام قدیمی' },
+    body: { body: 'پیام ماندگار' },
   });
 
-  setMeta('last_wipe_at', Date.now() - 8 * 24 * 60 * 60 * 1000); // هشت روز پیش
-  const result = runIfDue();
-  assert.ok(result, 'باید پاکسازی انجام می‌شد');
-  assert.equal(result.reason, 'scheduled');
+  setMeta('last_wipe_at', Date.now() - 30 * 24 * 60 * 60 * 1000); // سی روز پیش
+  assert.equal(runIfDue(), null, 'با خاموش بودن خودکار نباید چیزی پاک شود');
+  assert.equal(wipeStatus().auto, false);
+  assert.equal(wipeStatus().nextWipeAt, null);
 
   const overview = await call('/api/admin/overview', { token: context.adminToken });
-  assert.equal(overview.body.stats.messages, 0);
-  assert.ok(overview.body.cleanup.nextWipeAt > Date.now());
+  assert.ok(overview.body.stats.messages > 0, 'پیام باید سر جایش باشد');
+});
+
+test('با روشن کردن CLEANUP_INTERVAL_DAYS، پاکسازی عقب‌افتاده جبران می‌شود', () => {
+  // چون فاصله‌ی پاکسازی هنگام بارگذاری ماژول از محیط خوانده می‌شود،
+  // این حالت در یک پروسه‌ی جدا با متغیر محیطی تنظیم‌شده بررسی می‌شود.
+  const { execFileSync } = require('node:child_process');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cleanup-auto-'));
+  const script = `
+    const { db, setMeta } = require(${JSON.stringify(path.resolve(__dirname, '../server/db.js'))});
+    const { runIfDue, wipeStatus } = require(${JSON.stringify(path.resolve(__dirname, '../server/cleanup.js'))});
+    const now = Date.now();
+    db.prepare("INSERT INTO conversations (type, title, avatar_color, created_at) VALUES ('group','گ','#fff',?)").run(now);
+    db.prepare("INSERT INTO messages (conversation_id, sender_id, kind, body, created_at) VALUES (1, NULL, 'text', 'x', ?)").run(now);
+    setMeta('last_wipe_at', now - 3 * 24 * 60 * 60 * 1000);
+    const result = runIfDue();
+    console.log(JSON.stringify({
+      reason: result && result.reason,
+      wiped: result && result.messages,
+      auto: wipeStatus().auto,
+      remaining: db.prepare('SELECT COUNT(*) AS c FROM messages').get().c,
+    }));
+  `;
+  const out = execFileSync(process.execPath, ['-e', script], {
+    env: {
+      ...process.env,
+      CLEANUP_INTERVAL_DAYS: '1',
+      DATA_DIR: dir,
+      DB_FILE: path.join(dir, 'auto.db'),
+      UPLOAD_DIR: path.join(dir, 'uploads'),
+    },
+    encoding: 'utf8',
+  });
+
+  const info = JSON.parse(out.trim().split('\n').pop());
+  fs.rmSync(dir, { recursive: true, force: true });
+
+  assert.equal(info.auto, true);
+  assert.equal(info.reason, 'scheduled');
+  assert.equal(info.wiped, 1);
+  assert.equal(info.remaining, 0);
+});
+
+test('کاربر فقط با نام کاربری دقیق پیدا می‌شود، نه با بخشی از آن', async () => {
+  const exact = await call('/api/users?q=sara', { token: context.adminToken });
+  assert.equal(exact.status, 200);
+  assert.equal(exact.body.users.length, 1);
+  assert.equal(exact.body.users[0].username, 'sara');
+
+  // با @ هم باید کار کند
+  const withAt = await call('/api/users?q=%40sara', { token: context.adminToken });
+  assert.equal(withAt.body.users.length, 1);
+
+  for (const q of ['sar', 'ara', 'سارا', 's', '%']) {
+    const res = await call(`/api/users?q=${encodeURIComponent(q)}`, { token: context.adminToken });
+    assert.equal(res.body.users.length, 0, `«${q}» نباید کسی را لو بدهد`);
+  }
 });

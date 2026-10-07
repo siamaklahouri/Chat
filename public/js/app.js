@@ -946,12 +946,67 @@
     indicator.classList.remove('is-hidden');
   }
 
-  function notify(conv, message) {
+  /**
+   * اعلان پیام تازه. سه مسیر، به ترتیب اولویت:
+   *  ۱) اپ اندروید (WebView): از پل بومی، چون WebView اصلاً Notification API ندارد.
+   *  ۲) سرویس‌ورکر: تنها راهی که در کروم اندروید کار می‌کند.
+   *  ۳) Notification مستقیم: برای مرورگرهای دسکتاپ.
+   */
+  async function notify(conv, message) {
     if (document.visibilityState === 'visible') return;
+    const body = message.kind === 'image' ? '🖼 عکس فرستاد' : message.body.slice(0, 120);
+
+    if (window.AndroidBridge?.notify) {
+      try {
+        window.AndroidBridge.notify(conv.title, body, String(conv.id));
+        return;
+      } catch {
+        /* اگر پل در دسترس نبود، مسیرهای بعدی را امتحان می‌کنیم */
+      }
+    }
+
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
-    const body =
-      message.kind === 'image' ? '🖼 عکس فرستاد' : message.body.slice(0, 120);
-    new Notification(conv.title, { body, icon: '/icons/icon-192.png', tag: `conv-${conv.id}` });
+
+    const options = {
+      body,
+      icon: '/icons/icon-192.png',
+      badge: '/icons/icon-192.png',
+      tag: `conv-${conv.id}`,
+      data: { conversationId: conv.id, url: '/' },
+    };
+
+    try {
+      const registration = await navigator.serviceWorker?.ready;
+      if (registration) {
+        await registration.showNotification(conv.title, options);
+        return;
+      }
+    } catch {
+      /* برمی‌گردیم به حالت ساده */
+    }
+    try {
+      new Notification(conv.title, options);
+    } catch {
+      /* بعضی مرورگرها سازنده را روی موبایل ممنوع کرده‌اند */
+    }
+  }
+
+  /** یک بار، بعد از ورود، اجازه‌ی اعلان را می‌گیرد (اگر هنوز تصمیمی گرفته نشده). */
+  async function requestNotificationPermission({ force = false } = {}) {
+    if (window.AndroidBridge?.requestNotificationPermission) {
+      window.AndroidBridge.requestNotificationPermission();
+      return;
+    }
+    if (!('Notification' in window)) return;
+    if (Notification.permission === 'granted') return toast('اعلان‌ها از قبل فعال است.');
+    if (Notification.permission === 'denied') {
+      if (force) toast('اعلان‌ها را در تنظیمات مرورگر برای این سایت اجازه دهید.', true);
+      return;
+    }
+    if (!force && localStorage.getItem('messenger.notifyAsked')) return;
+    localStorage.setItem('messenger.notifyAsked', '1');
+    const result = await Notification.requestPermission().catch(() => 'default');
+    if (force) toast(result === 'granted' ? 'اعلان‌ها فعال شد.' : 'اعلان‌ها فعال نشد.', result !== 'granted');
   }
 
   /* ------------------------------- پنجره‌ها ----------------------------- */
@@ -997,10 +1052,15 @@
     openModal('گفتگوی جدید', (body) => {
       const search = document.createElement('input');
       search.type = 'search';
-      search.placeholder = 'نام یا نام کاربری را جستجو کنید…';
+      search.placeholder = 'نام کاربری دقیق طرف مقابل…';
       const results = document.createElement('div');
       results.style.display = 'grid';
       results.style.gap = '8px';
+
+      const hint = document.createElement('p');
+      hint.className = 'muted';
+      hint.style.margin = '0';
+      hint.textContent = 'برای شروع گفتگو باید نام کاربری دقیق طرف مقابل را بدانید.';
 
       const groupBtn = document.createElement('button');
       groupBtn.className = 'btn';
@@ -1017,7 +1077,8 @@
             const data = await api(`/users?q=${encodeURIComponent(query)}`);
             results.innerHTML = '';
             if (data.users.length === 0) {
-              results.innerHTML = '<p class="empty-list">کاربری پیدا نشد.</p>';
+              results.innerHTML =
+                '<p class="empty-list">کاربری با این نام کاربری پیدا نشد. نام کاربری باید دقیق باشد.</p>';
               return;
             }
             for (const user of data.users) {
@@ -1045,7 +1106,7 @@
         }, 220);
       });
 
-      body.append(groupBtn, search, results);
+      body.append(groupBtn, hint, search, results);
       search.focus();
     });
   }
@@ -1060,7 +1121,7 @@
 
       const search = document.createElement('input');
       search.type = 'search';
-      search.placeholder = 'افزودن عضو…';
+      search.placeholder = 'نام کاربری دقیق عضو تازه…';
 
       const chosen = document.createElement('div');
       chosen.className = 'muted';
@@ -1157,8 +1218,8 @@
 
       const notifyBtn = document.createElement('button');
       notifyBtn.className = 'btn';
-      notifyBtn.textContent = '🔔 اجازه اعلان‌ها';
-      notifyBtn.addEventListener('click', () => Notification.requestPermission?.());
+      notifyBtn.textContent = '🔔 فعال‌سازی اعلان‌ها';
+      notifyBtn.addEventListener('click', () => requestNotificationPermission({ force: true }));
 
       const logout = document.createElement('button');
       logout.className = 'btn btn-danger';
@@ -1236,7 +1297,7 @@
     openModal('افزودن عضو', (body) => {
       const search = document.createElement('input');
       search.type = 'search';
-      search.placeholder = 'جستجوی کاربر…';
+      search.placeholder = 'نام کاربری دقیق…';
       const results = document.createElement('div');
       results.style.display = 'grid';
       results.style.gap = '8px';
@@ -1296,11 +1357,13 @@
   async function showWipeInfo() {
     try {
       const health = await fetch('/api/health').then((r) => r.json());
-      const next = new Date(health.cleanup.nextWipeAt);
-      $('wipeInfo').textContent = `پاکسازی خودکار پیام‌ها: ${next.toLocaleDateString('fa-IR', {
-        month: 'long',
-        day: 'numeric',
-      })} — هر ۷ روز`;
+      const { auto, intervalDays, nextWipeAt } = health.cleanup;
+      $('wipeInfo').textContent = auto
+        ? `پاکسازی خودکار پیام‌ها: ${new Date(nextWipeAt).toLocaleDateString('fa-IR', {
+            month: 'long',
+            day: 'numeric',
+          })} — هر ${fa(intervalDays)} روز`
+        : '';
     } catch {
       /* نمایش این اطلاعات اختیاری است */
     }
@@ -1314,6 +1377,7 @@
     await loadConversations();
     connectSocket();
     showWipeInfo();
+    requestNotificationPermission();
   }
 
   $('newChatBtn').addEventListener('click', newChatModal);
@@ -1342,6 +1406,11 @@
   async function boot() {
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').catch(() => {});
+      navigator.serviceWorker.addEventListener('message', (event) => {
+        if (event.data?.type === 'open-conversation' && event.data.conversationId) {
+          openConversation(Number(event.data.conversationId));
+        }
+      });
     }
     if (!state.token) return;
     try {

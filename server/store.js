@@ -123,17 +123,19 @@ function listUsers({ status } = {}) {
   }));
 }
 
-function searchUsers(query, excludeId, limit = 20) {
-  const like = `%${query}%`;
-  return db
+/**
+ * کاربر فقط با نام کاربری دقیق پیدا می‌شود — نه با بخشی از آن و نه با نام نمایشی.
+ * هدف این است که فهرست کاربران قابل مرور نباشد: برای پیام دادن باید شناسه‌ی
+ * طرف مقابل را از قبل بدانید.
+ */
+function findUserByHandle(handle, excludeId) {
+  const row = db
     .prepare(
       `SELECT * FROM users
-       WHERE id != ? AND status = 'approved'
-         AND (username LIKE ? COLLATE NOCASE OR display_name LIKE ? COLLATE NOCASE)
-       ORDER BY display_name LIMIT ?`
+       WHERE username = ? COLLATE NOCASE AND id != ? AND status = 'approved'`
     )
-    .all(excludeId, like, like, limit)
-    .map(publicUser);
+    .get(handle, excludeId);
+  return row ? [publicUser(row)] : [];
 }
 
 /* --------------------------- conversations --------------------------- */
@@ -379,7 +381,7 @@ module.exports = {
   countAdmins,
   countPending,
   listUsers,
-  searchUsers,
+  findUserByHandle,
   getOrCreateDirect,
   createGroup,
   getConversationRow,
