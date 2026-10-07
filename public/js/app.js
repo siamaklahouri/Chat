@@ -261,7 +261,7 @@
 
   function chatStatusText(conv) {
     if (conv.type === 'group') return `${fa(conv.memberCount)} عضو`;
-    if (!conv.peer) return '';
+    if (!conv.peer) return 'این حساب دیگر وجود ندارد';
     return conv.peer.online ? 'آنلاین' : `آخرین بازدید ${relativeTime(conv.peer.lastSeenAt)}`;
   }
 
@@ -525,6 +525,8 @@
       state.messages = data.messages;
       state.hasMore = data.hasMore;
       renderChatHeader();
+      const composer = $('composer');
+      composer.classList.toggle('is-hidden', Boolean(conversation.orphaned));
       renderMessages({ toBottom: true });
       renderConversations();
       markConversationRead();
@@ -1355,6 +1357,14 @@
       text.querySelector('small').textContent = chatStatusText(conv);
       heading.append(avatar, text);
       body.appendChild(heading);
+
+      if (conv.type === 'direct' && !conv.peer) {
+        const gone = document.createElement('p');
+        gone.className = 'muted';
+        gone.textContent =
+          'حساب طرف مقابل حذف شده است. می‌توانید این گفتگو را از فهرست خود پاک کنید.';
+        body.appendChild(gone);
+      }
 
       if (conv.type === 'direct' && conv.peer?.bio) {
         const bio = document.createElement('p');

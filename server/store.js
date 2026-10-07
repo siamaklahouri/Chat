@@ -267,11 +267,15 @@ function conversationView(conversationId, viewerId) {
     )
     .get(conversationId, lastReadId, viewerId).c;
 
+  // در گفتگوی دوطرفه اگر طرف مقابل پیدا نشود یعنی حسابش حذف شده است.
+  const orphaned = conv.type === 'direct' && !peer;
+
   return {
     id: conv.id,
     type: conv.type,
-    title: conv.type === 'group' ? conv.title : peer ? peer.displayName : 'گفتگو',
-    avatarColor: conv.type === 'group' ? conv.avatar_color : peer ? peer.avatarColor : '#4f7cff',
+    title: conv.type === 'group' ? conv.title : peer ? peer.displayName : 'کاربر حذف‌شده',
+    orphaned,
+    avatarColor: conv.type === 'group' ? conv.avatar_color : peer ? peer.avatarColor : '#64748b',
     peer,
     members,
     memberCount: members.length,
