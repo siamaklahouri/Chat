@@ -172,6 +172,11 @@
   });
 
   function signOut(message) {
+    try {
+      window.AndroidBridge?.clearSession?.();
+    } catch {
+      /* در مرورگر معمولی پلی وجود ندارد */
+    }
     state.token = null;
     state.me = null;
     state.activeId = null;
@@ -902,6 +907,13 @@
         upsertConversation(event.conversation);
         break;
 
+      case 'conversation:cleared':
+        // همین کاربر از دستگاه دیگری گفتگو را پاک کرده است.
+        state.conversations.delete(event.conversationId);
+        if (state.activeId === event.conversationId) closeChat();
+        renderConversations();
+        break;
+
       case 'conversation:left':
         state.conversations.delete(event.conversationId);
         if (state.activeId === event.conversationId) closeChat();
@@ -1292,6 +1304,11 @@
           });
           state.token = data.token;
           localStorage.setItem(TOKEN_KEY, data.token);
+          try {
+            window.AndroidBridge?.setSession?.(data.token, location.origin);
+          } catch {
+            /* فقط در اپ اندروید معنی دارد */
+          }
           currentPassword.value = '';
           newPassword.value = '';
           toast(data.message);
@@ -1356,6 +1373,23 @@
         body.appendChild(bio);
       }
 
+      const removeChat = document.createElement('button');
+      removeChat.className = 'btn btn-danger';
+      removeChat.textContent = '🗑 حذف گفتگو (فقط برای من)';
+      removeChat.addEventListener('click', async () => {
+        if (!confirm('این گفتگو از فهرست شما پاک شود؟ طرف مقابل نسخه‌ی خودش را خواهد داشت.')) return;
+        try {
+          await api(`/conversations/${conv.id}`, { method: 'DELETE' });
+          state.conversations.delete(conv.id);
+          closeModal();
+          if (state.activeId === conv.id) closeChat();
+          renderConversations();
+          toast('گفتگو پاک شد.');
+        } catch (err) {
+          toast(err.message, true);
+        }
+      });
+
       if (conv.type === 'group') {
         for (const member of conv.members) {
           const row = userRow(member);
@@ -1386,6 +1420,8 @@
         });
         body.appendChild(leave);
       }
+
+      body.appendChild(removeChat);
     });
   }
 
@@ -1468,6 +1504,14 @@
     connectSocket();
     showWipeInfo();
     requestNotificationPermission();
+
+    // اپ اندروید نشست را نگه می‌دارد تا سرویس پس‌زمینه‌اش، حتی با بسته بودن
+    // برنامه، به سرور وصل بماند و اعلان بدهد.
+    try {
+      window.AndroidBridge?.setSession?.(state.token, location.origin);
+    } catch {
+      /* در مرورگر معمولی پلی وجود ندارد */
+    }
   }
 
   $('newChatBtn').addEventListener('click', newChatModal);

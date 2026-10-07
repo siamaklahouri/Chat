@@ -210,6 +210,30 @@ const membersOf = (conversationId) =>
       lastReadMessageId: row.last_read_message_id,
     }));
 
+/** دید این کاربر از گفتگو: تا کجا پاک کرده و آیا مخفی‌اش کرده. */
+const memberView = (conversationId, userId) =>
+  db
+    .prepare(
+      'SELECT last_read_message_id, cleared_up_to_id, hidden FROM members WHERE conversation_id = ? AND user_id = ?'
+    )
+    .get(conversationId, userId) || { last_read_message_id: 0, cleared_up_to_id: 0, hidden: 0 };
+
+/**
+ * «حذف گفتگو» فقط برای همین کاربر: پیام‌های تا این لحظه از دید او پنهان می‌شوند و
+ * گفتگو از فهرستش می‌رود. طرف مقابل نسخه‌ی خودش را دست‌نخورده دارد، و اگر پیام
+ * تازه‌ای بیاید گفتگو دوباره — فقط با پیام‌های تازه — برمی‌گردد.
+ */
+function clearConversationFor(conversationId, userId) {
+  const last =
+    db.prepare('SELECT MAX(id) AS id FROM messages WHERE conversation_id = ?').get(conversationId)
+      ?.id || 0;
+  db.prepare(
+    `UPDATE members SET cleared_up_to_id = ?, hidden = 1, last_read_message_id = ?
+     WHERE conversation_id = ? AND user_id = ?`
+  ).run(last, last, conversationId, userId);
+  return last;
+}
+
 function addMember(conversationId, userId) {
   db.prepare(
     'INSERT OR IGNORE INTO members (conversation_id, user_id, role, joined_at) VALUES (?, ?, ?, ?)'
@@ -229,11 +253,13 @@ function conversationView(conversationId, viewerId) {
   if (!conv) return null;
   const members = membersOf(conversationId);
   const me = members.find((m) => m.id === viewerId);
+  const view = memberView(conversationId, viewerId);
+  const cleared = view.cleared_up_to_id;
   const peer = conv.type === 'direct' ? members.find((m) => m.id !== viewerId) || null : null;
   const lastRow = db
-    .prepare('SELECT * FROM messages WHERE conversation_id = ? ORDER BY id DESC LIMIT 1')
-    .get(conversationId);
-  const lastReadId = me ? me.lastReadMessageId : 0;
+    .prepare('SELECT * FROM messages WHERE conversation_id = ? AND id > ? ORDER BY id DESC LIMIT 1')
+    .get(conversationId, cleared);
+  const lastReadId = Math.max(me ? me.lastReadMessageId : 0, cleared);
   const unread = db
     .prepare(
       `SELECT COUNT(*) AS c FROM messages
@@ -253,6 +279,7 @@ function conversationView(conversationId, viewerId) {
     lastMessage: lastRow ? publicMessage(lastRow) : null,
     unread,
     lastReadMessageId: lastReadId,
+    clearedUpToId: cleared,
   };
 }
 
@@ -263,6 +290,7 @@ function listConversations(viewerId) {
        JOIN members m ON m.conversation_id = c.id AND m.user_id = ?
        LEFT JOIN (SELECT conversation_id, MAX(id) AS last_id FROM messages GROUP BY conversation_id) lm
          ON lm.conversation_id = c.id
+       WHERE m.hidden = 0 OR COALESCE(lm.last_id, 0) > m.cleared_up_to_id
        ORDER BY COALESCE(lm.last_id, 0) DESC, c.id DESC`
     )
     .all(viewerId)
@@ -278,14 +306,18 @@ const MESSAGE_SELECT = `
   LEFT JOIN messages r ON r.id = m.reply_to_id
 `;
 
-function listMessages(conversationId, { before, limit = 40 } = {}) {
+function listMessages(conversationId, { before, limit = 40, viewerId = null } = {}) {
+  // پیام‌هایی که این کاربر پاک کرده، دیگر برای او برگردانده نمی‌شوند.
+  const cleared = viewerId ? memberView(conversationId, viewerId).cleared_up_to_id : 0;
   const rows = before
     ? db
-        .prepare(`${MESSAGE_SELECT} WHERE m.conversation_id = ? AND m.id < ? ORDER BY m.id DESC LIMIT ?`)
-        .all(conversationId, before, limit)
+        .prepare(
+          `${MESSAGE_SELECT} WHERE m.conversation_id = ? AND m.id < ? AND m.id > ? ORDER BY m.id DESC LIMIT ?`
+        )
+        .all(conversationId, before, cleared, limit)
     : db
-        .prepare(`${MESSAGE_SELECT} WHERE m.conversation_id = ? ORDER BY m.id DESC LIMIT ?`)
-        .all(conversationId, limit);
+        .prepare(`${MESSAGE_SELECT} WHERE m.conversation_id = ? AND m.id > ? ORDER BY m.id DESC LIMIT ?`)
+        .all(conversationId, cleared, limit);
   return rows.reverse().map(publicMessage);
 }
 
@@ -389,6 +421,8 @@ module.exports = {
   memberIdsOf,
   membersOf,
   addMember,
+  memberView,
+  clearConversationFor,
   removeMember,
   conversationView,
   listConversations,

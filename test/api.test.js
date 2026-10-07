@@ -438,6 +438,56 @@ test('با روشن کردن CLEANUP_INTERVAL_DAYS، پاکسازی عقب‌ا�
   assert.equal(info.remaining, 0);
 });
 
+test('حذف گفتگو فقط برای همان کاربر انجام می‌شود', async () => {
+  // گفتگوی تازه بین مدیر و علی تا به بقیه‌ی آزمون‌ها دست نخورد
+  const created = await call('/api/conversations/direct', {
+    method: 'POST',
+    token: context.adminToken,
+    body: { userId: context.aliId },
+  });
+  const convId = created.body.conversation.id;
+
+  for (const text of ['پیام یک', 'پیام دو']) {
+    await call(`/api/conversations/${convId}/messages`, {
+      method: 'POST',
+      token: context.adminToken,
+      body: { body: text },
+    });
+  }
+
+  const beforeDelete = await call(`/api/conversations/${convId}/messages`, { token: context.aliToken });
+  assert.equal(beforeDelete.body.messages.length, 2);
+
+  const removed = await call(`/api/conversations/${convId}`, { method: 'DELETE', token: context.aliToken });
+  assert.equal(removed.status, 200);
+
+  // از فهرست و تاریخچه‌ی علی رفته است
+  const aliList = await call('/api/conversations', { token: context.aliToken });
+  assert.ok(!aliList.body.conversations.some((c) => c.id === convId), 'نباید در فهرست علی باشد');
+  const aliMessages = await call(`/api/conversations/${convId}/messages`, { token: context.aliToken });
+  assert.equal(aliMessages.body.messages.length, 0);
+
+  // ولی مدیر نسخه‌ی خودش را کامل دارد
+  const adminList = await call('/api/conversations', { token: context.adminToken });
+  assert.ok(adminList.body.conversations.some((c) => c.id === convId), 'باید در فهرست مدیر بماند');
+  const adminMessages = await call(`/api/conversations/${convId}/messages`, { token: context.adminToken });
+  assert.equal(adminMessages.body.messages.length, 2);
+
+  // با پیام تازه، گفتگو برای علی برمی‌گردد — ولی فقط با پیام‌های تازه
+  await call(`/api/conversations/${convId}/messages`, {
+    method: 'POST',
+    token: context.adminToken,
+    body: { body: 'پیام سوم' },
+  });
+  const back = await call('/api/conversations', { token: context.aliToken });
+  const revived = back.body.conversations.find((c) => c.id === convId);
+  assert.ok(revived, 'با پیام تازه باید برگردد');
+  assert.equal(revived.unread, 1);
+  const aliAfter = await call(`/api/conversations/${convId}/messages`, { token: context.aliToken });
+  assert.equal(aliAfter.body.messages.length, 1);
+  assert.equal(aliAfter.body.messages[0].body, 'پیام سوم');
+});
+
 test('تغییر رمز: رمز فعلی اشتباه رد می‌شود و رمز درست نشست تازه می‌دهد', async () => {
   // آزمون مسدودسازی، نشست‌های این کاربر را باطل کرده بود؛ یک نشست تازه می‌گیریم.
   const relogin = await call('/api/auth/login', {

@@ -52,6 +52,8 @@ CREATE TABLE IF NOT EXISTS members (
   role                 TEXT NOT NULL DEFAULT 'member',
   joined_at            INTEGER NOT NULL,
   last_read_message_id INTEGER NOT NULL DEFAULT 0,
+  cleared_up_to_id     INTEGER NOT NULL DEFAULT 0,
+  hidden               INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (conversation_id, user_id)
 );
 
@@ -82,6 +84,16 @@ CREATE INDEX IF NOT EXISTS idx_members_user ON members(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
 `);
+
+// مهاجرت‌ها: CREATE TABLE IF NOT EXISTS ستون تازه را به جدول موجود اضافه نمی‌کند،
+// پس برای پایگاه‌داده‌هایی که از قبل ساخته شده‌اند دستی اضافه می‌شوند.
+for (const [table, column, definition] of [
+  ['members', 'cleared_up_to_id', 'INTEGER NOT NULL DEFAULT 0'],
+  ['members', 'hidden', 'INTEGER NOT NULL DEFAULT 0'],
+]) {
+  const existing = db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
+  if (!existing.includes(column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+}
 
 const getMeta = (key, fallback = null) => {
   const row = db.prepare('SELECT value FROM meta WHERE key = ?').get(key);

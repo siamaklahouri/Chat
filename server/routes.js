@@ -224,6 +224,7 @@ router.get('/conversations/:id/messages', requireApproved, memberGuard, (req, re
   const messages = store.listMessages(req.conversationId, {
     before: Number.isInteger(before) ? before : null,
     limit,
+    viewerId: req.user.id,
   });
   res.json({ messages, hasMore: messages.length === limit });
 });
@@ -370,6 +371,17 @@ router.post('/conversations/:id/read', requireApproved, memberGuard, (req, res) 
 });
 
 /* ------------------------------- members -------------------------------- */
+
+/** حذف گفتگو فقط برای همین کاربر؛ نسخه‌ی طرف مقابل دست‌نخورده می‌ماند. */
+router.delete('/conversations/:id', requireApproved, memberGuard, (req, res) => {
+  const clearedUpToId = store.clearConversationFor(req.conversationId, req.user.id);
+  hub.sendToUser(req.user.id, {
+    type: 'conversation:cleared',
+    conversationId: req.conversationId,
+    clearedUpToId,
+  });
+  res.json({ ok: true, clearedUpToId });
+});
 
 router.post('/conversations/:id/members', requireApproved, memberGuard, (req, res) => {
   const conv = store.getConversationRow(req.conversationId);
