@@ -16,8 +16,11 @@ set -euo pipefail
 DOMAIN="${1:-}"
 PUBLIC_IP="${2:-}"
 SERVICE_NAME="9chat"
-ENV_FILE="/etc/9chat.env"
-TURN_CONF="/etc/turnserver.conf"
+# مسیرها قابل جایگزینی‌اند تا بشود اسکریپت را بدون دست زدن به سیستم آزمود.
+ENV_FILE="${ENV_FILE:-/etc/9chat.env}"
+TURN_CONF="${TURN_CONF:-/etc/turnserver.conf}"
+COTURN_DEFAULT="${COTURN_DEFAULT:-/etc/default/coturn}"
+UNIT_FILE="${UNIT_FILE:-/etc/systemd/system/$SERVICE_NAME.service}"
 MIN_PORT="${MIN_PORT:-49160}"
 MAX_PORT="${MAX_PORT:-49260}"
 
@@ -25,23 +28,41 @@ info() { printf '\n\033[1;34m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[!]\033[0m %s\n' "$*"; }
 die() { printf '\033[1;31m[x]\033[0m %s\n' "$*" >&2; exit 1; }
 
+# بدون این تله، هر دستوری که زیر `set -e` شکست بخورد اسکریپت را بی‌هیچ پیامی
+# تمام می‌کند و آدم فکر می‌کند کار انجام شده است.
+on_error() {
+  local code=$?
+  printf '\033[1;31m[x]\033[0m اسکریپت در خط %s با کد %s متوقف شد.\n' "$1" "$code" >&2
+  exit "$code"
+}
+trap 'on_error $LINENO' ERR
+
 [[ $EUID -eq 0 ]] || die "این اسکریپت را با sudo اجرا کنید."
 [[ -n "$DOMAIN" ]] || die "کاربرد: sudo bash deploy/setup-coturn.sh <دامنه> [آی‌پی عمومی]"
 
 # ----------------------------------------------------------------- نصب
-info "نصب coturn"
-export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq
-apt-get install -y -qq coturn >/dev/null
+if command -v turnserver >/dev/null 2>&1; then
+  info "coturn از قبل نصب است"
+else
+  info "نصب coturn"
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update -qq
+  apt-get install -y -qq coturn >/dev/null
+fi
 
 # ----------------------------------------------- آی‌پی عمومی و NAT
+# نشانیِ کارت شبکه‌ای که مسیر پیش‌فرض از آن می‌رود — نه نخستین نشانی
+# `hostname -I`، که روی سروری با داکر می‌تواند پل داکر (172.17.0.1) باشد.
+LOCAL_IP="$(ip -4 route get 1.1.1.1 2>/dev/null |
+  awk '{for (i = 1; i <= NF; i++) if ($i == "src") { print $(i + 1); exit } }' || true)"
+[[ -n "$LOCAL_IP" ]] || LOCAL_IP="$(hostname -I | awk '{print $1}')"
+[[ -n "$LOCAL_IP" ]] || die "نشانی شبکه‌ی سرور پیدا نشد."
+
 if [[ -z "$PUBLIC_IP" ]]; then
   PUBLIC_IP="$(curl -4 -s --max-time 8 https://api.ipify.org || true)"
 fi
-[[ -n "$PUBLIC_IP" ]] || PUBLIC_IP="$(hostname -I | awk '{print $1}')"
-[[ -n "$PUBLIC_IP" ]] || die "آی‌پی عمومی سرور پیدا نشد؛ آن را به‌عنوان آرگومان دوم بدهید."
+[[ -n "$PUBLIC_IP" ]] || PUBLIC_IP="$LOCAL_IP"
 
-LOCAL_IP="$(hostname -I | tr ' ' '\n' | grep -v '^$' | head -1)"
 EXTERNAL_LINE=""
 if [[ "$PUBLIC_IP" != "$LOCAL_IP" ]]; then
   # سرور پشت NAT است: coturn باید نشانی عمومی را در کاندیداها اعلام کند.
@@ -53,7 +74,12 @@ fi
 
 # ------------------------------------------------------------ راز مشترک
 # اگر قبلاً رازی ساخته شده، همان می‌ماند تا تماس‌های در جریان قطع نشوند.
-TURN_SECRET="$(sed -n 's/^TURN_SECRET=//p' "$ENV_FILE" 2>/dev/null | head -1)"
+# با لوله ننویسید: اگر فایل نباشد sed کد ۲ برمی‌گرداند و pipefail کل اسکریپت را
+# بی‌صدا تمام می‌کند — دقیقاً همان چیزی که بار اول اتفاق افتاد.
+TURN_SECRET=""
+if [[ -f "$ENV_FILE" ]]; then
+  TURN_SECRET="$(awk -F= '/^TURN_SECRET=/ { print $2; exit }' "$ENV_FILE" || true)"
+fi
 if [[ -z "$TURN_SECRET" ]]; then
   TURN_SECRET="$(openssl rand -hex 32)"
   info "راز مشترک TURN ساخته شد"
@@ -71,6 +97,9 @@ cat > "$TURN_CONF" <<CONF
 # ساخته‌شده توسط deploy/setup-coturn.sh برای 9chat — دست‌نوشته‌ها بازنویسی می‌شوند.
 
 listening-port=3478
+# فقط روی کارت شبکه‌ی عمومی؛ نه 127.0.0.1 و نه پل داکر.
+listening-ip=$LOCAL_IP
+relay-ip=$LOCAL_IP
 $EXTERNAL_LINE
 realm=$DOMAIN
 server-name=$DOMAIN
@@ -123,11 +152,11 @@ chmod 640 "$TURN_CONF"
 chown root:root "$TURN_CONF"
 
 # در اوبونتو سرویس تا این پرچم روشن نشود بالا نمی‌آید.
-if [[ -f /etc/default/coturn ]]; then
-  if grep -q '^#*TURNSERVER_ENABLED' /etc/default/coturn; then
-    sed -i 's/^#*TURNSERVER_ENABLED=.*/TURNSERVER_ENABLED=1/' /etc/default/coturn
+if [[ -f "$COTURN_DEFAULT" ]]; then
+  if grep -q '^#*TURNSERVER_ENABLED' "$COTURN_DEFAULT"; then
+    sed -i 's/^#*TURNSERVER_ENABLED=.*/TURNSERVER_ENABLED=1/' "$COTURN_DEFAULT"
   else
-    echo 'TURNSERVER_ENABLED=1' >> /etc/default/coturn
+    echo 'TURNSERVER_ENABLED=1' >> "$COTURN_DEFAULT"
   fi
 fi
 
@@ -143,9 +172,8 @@ chmod 600 "$ENV_FILE"
 chown root:root "$ENV_FILE"
 
 # این خط در deploy-native.sh هست، ولی اگر سرویس قبلاً نصب شده باشد باید اضافه شود.
-UNIT="/etc/systemd/system/$SERVICE_NAME.service"
-if [[ -f "$UNIT" ]] && ! grep -q "EnvironmentFile=-$ENV_FILE" "$UNIT"; then
-  sed -i "/^ExecStart=/i EnvironmentFile=-$ENV_FILE" "$UNIT"
+if [[ -f "$UNIT_FILE" ]] && ! grep -q "EnvironmentFile=-$ENV_FILE" "$UNIT_FILE"; then
+  sed -i "/^ExecStart=/i EnvironmentFile=-$ENV_FILE" "$UNIT_FILE"
   info "EnvironmentFile به سرویس $SERVICE_NAME اضافه شد"
 fi
 

@@ -58,6 +58,7 @@ npm start           # روی http://localhost:3000
 ```bash
 npm test                                   # آزمون سرتاسری (۳۳ آزمون)
 node test/call.e2e.js                      # آزمون تماس صوتی در مرورگر واقعی (نیاز به playwright)
+bash test/setup-coturn.test.sh             # آزمون اسکریپت نصب coturn در جعبه‌ی شنی
 npm run create-admin -- boss secret123 رئیس   # ساخت یا ارتقای حساب مدیر
 npm run wipe                                # پاکسازی دستی پیام‌ها و عکس‌ها
 npm run icons                              # ساخت دوباره‌ی آیکون‌های PWA
