@@ -61,13 +61,14 @@ CREATE TABLE IF NOT EXISTS messages (
   id              INTEGER PRIMARY KEY AUTOINCREMENT,
   conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
   sender_id       INTEGER REFERENCES users(id) ON DELETE SET NULL,
-  kind            TEXT NOT NULL DEFAULT 'text' CHECK (kind IN ('text','image','system')),
+  kind            TEXT NOT NULL DEFAULT 'text' CHECK (kind IN ('text','image','voice','system')),
   body            TEXT NOT NULL DEFAULT '',
   file_name       TEXT,
   file_mime       TEXT,
   file_size       INTEGER,
   image_width     INTEGER,
   image_height    INTEGER,
+  duration_ms     INTEGER,
   reply_to_id     INTEGER REFERENCES messages(id) ON DELETE SET NULL,
   created_at      INTEGER NOT NULL,
   edited_at       INTEGER,
@@ -90,9 +91,64 @@ CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
 for (const [table, column, definition] of [
   ['members', 'cleared_up_to_id', 'INTEGER NOT NULL DEFAULT 0'],
   ['members', 'hidden', 'INTEGER NOT NULL DEFAULT 0'],
+  ['messages', 'duration_ms', 'INTEGER'],
 ]) {
   const existing = db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
   if (!existing.includes(column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+}
+
+/*
+ * افزودن نوع «voice» به پیام‌ها.
+ *
+ * SQLite اجازه‌ی تغییر یک CHECK را نمی‌دهد، پس جدول باید بازسازی شود: ساخت
+ * جدول تازه، کپی داده‌ها، حذف قدیمی و تغییر نام. همه داخل یک تراکنش انجام
+ * می‌شود تا اگر وسط کار چیزی خطا داد، داده‌ها دست‌نخورده بمانند.
+ */
+const messagesSchema =
+  db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'messages'").get()?.sql ||
+  '';
+
+if (messagesSchema && !messagesSchema.includes("'voice'")) {
+  const columns = db
+    .prepare('PRAGMA table_info(messages)')
+    .all()
+    .map((c) => c.name)
+    .join(', ');
+
+  db.exec('PRAGMA foreign_keys = OFF');
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    db.exec(`
+      CREATE TABLE messages_rebuilt (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+        sender_id       INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        kind            TEXT NOT NULL DEFAULT 'text' CHECK (kind IN ('text','image','voice','system')),
+        body            TEXT NOT NULL DEFAULT '',
+        file_name       TEXT,
+        file_mime       TEXT,
+        file_size       INTEGER,
+        image_width     INTEGER,
+        image_height    INTEGER,
+        duration_ms     INTEGER,
+        reply_to_id     INTEGER REFERENCES messages(id) ON DELETE SET NULL,
+        created_at      INTEGER NOT NULL,
+        edited_at       INTEGER,
+        deleted_at      INTEGER
+      );
+      INSERT INTO messages_rebuilt (${columns}) SELECT ${columns} FROM messages;
+      DROP TABLE messages;
+      ALTER TABLE messages_rebuilt RENAME TO messages;
+      CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id, id);
+    `);
+    db.exec('COMMIT');
+    console.log('[db] جدول پیام‌ها برای پشتیبانی از پیام صوتی بازسازی شد.');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  } finally {
+    db.exec('PRAGMA foreign_keys = ON');
+  }
 }
 
 const getMeta = (key, fallback = null) => {

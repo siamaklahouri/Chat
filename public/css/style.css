@@ -296,6 +296,50 @@ button { cursor: pointer; }
 .tick-pending svg { stroke-width: 1.8; }
 .tick-read { color: var(--brand-dot); }
 
+/* ------------------------------ پیام صوتی ----------------------------- */
+
+.voice {
+  display: flex; align-items: center; gap: 10px;
+  min-width: 190px; padding: 2px 0 4px;
+  direction: ltr;
+}
+.voice-play {
+  width: 36px; height: 36px; flex: none;
+  border: 0; border-radius: 50%;
+  background: rgba(255, 255, 255, .16); color: #fff;
+  display: grid; place-items: center;
+}
+.message-row.theirs .voice-play { background: rgba(255, 255, 255, .1); }
+.voice-play svg { width: 18px; height: 18px; }
+.voice-track {
+  flex: 1; height: 4px; border-radius: 999px;
+  background: rgba(255, 255, 255, .22); cursor: pointer; position: relative;
+}
+.message-row.theirs .voice-track { background: rgba(255, 255, 255, .14); }
+.voice-fill {
+  height: 100%; width: 0; border-radius: 999px;
+  background: var(--brand-dot); transition: width .1s linear;
+}
+.voice-time {
+  font-size: 12px; font-variant-numeric: tabular-nums;
+  color: rgba(232, 238, 246, .75); min-width: 34px; text-align: left;
+}
+
+/* نوار ضبط، جای کادر نوشتن می‌نشیند */
+.record-bar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px calc(8px + var(--safe-bottom));
+  border-top: 1px solid var(--line); background: var(--bg-2);
+}
+.record-time { font-variant-numeric: tabular-nums; font-size: 15px; font-weight: 600; }
+.record-hint { flex: 1; }
+.record-dot {
+  width: 10px; height: 10px; border-radius: 50%; background: var(--danger); flex: none;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { .record-dot { animation: none; } }
+
 /* دکمه‌ی شناور رفتن به آخرین پیام */
 .jump-btn {
   position: absolute; inset-inline-end: 14px; bottom: 14px;

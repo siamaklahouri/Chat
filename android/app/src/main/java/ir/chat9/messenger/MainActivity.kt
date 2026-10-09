@@ -40,7 +40,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
     private var cameraImageUri: Uri? = null
-    private var pendingCameraRequest: PermissionRequest? = null
+    private var pendingMediaRequest: PermissionRequest? = null
     private var loadFailed = false
 
     private val prefs by lazy { getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
@@ -73,12 +73,16 @@ class MainActivity : AppCompatActivity() {
             if (!granted) toast(getString(R.string.notification_permission_needed))
         }
 
-    private val cameraPermissionLauncher =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-            val request = pendingCameraRequest
-            pendingCameraRequest = null
-            if (granted) request?.grant(request.resources) else request?.deny()
-            if (!granted) toast(getString(R.string.camera_permission_needed))
+    private val mediaPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { results ->
+            val request = pendingMediaRequest
+            pendingMediaRequest = null
+            if (results.values.all { it }) {
+                request?.grant(request.resources)
+            } else {
+                request?.deny()
+                toast(getString(R.string.media_permission_needed))
+            }
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -174,15 +178,22 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onPermissionRequest(request: PermissionRequest) {
-                if (request.resources.any { it == PermissionRequest.RESOURCE_VIDEO_CAPTURE }) {
-                    if (hasCameraPermission()) {
-                        request.grant(request.resources)
-                    } else {
-                        pendingCameraRequest = request
-                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                // صفحه برای ضبط پیام صوتی میکروفون می‌خواهد و برای گرفتن عکس دوربین.
+                val wantsAudio = request.resources.any { it == PermissionRequest.RESOURCE_AUDIO_CAPTURE }
+                val wantsVideo = request.resources.any { it == PermissionRequest.RESOURCE_VIDEO_CAPTURE }
+
+                val needed = buildList {
+                    if (wantsAudio && !hasPermission(Manifest.permission.RECORD_AUDIO)) add(Manifest.permission.RECORD_AUDIO)
+                    if (wantsVideo && !hasPermission(Manifest.permission.CAMERA)) add(Manifest.permission.CAMERA)
+                }
+
+                when {
+                    !wantsAudio && !wantsVideo -> request.deny()
+                    needed.isEmpty() -> request.grant(request.resources)
+                    else -> {
+                        pendingMediaRequest = request
+                        mediaPermissionLauncher.launch(needed.toTypedArray())
                     }
-                } else {
-                    request.deny()
                 }
             }
         }
@@ -233,9 +244,10 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun hasCameraPermission() =
-        ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) ==
-            PackageManager.PERMISSION_GRANTED
+    private fun hasPermission(permission: String) =
+        ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
+
+    private fun hasCameraPermission() = hasPermission(Manifest.permission.CAMERA)
 
     private fun loadApp() {
         showError(false)

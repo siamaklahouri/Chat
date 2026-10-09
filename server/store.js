@@ -26,7 +26,7 @@ const publicUser = (row) =>
   };
 
 const attachmentOf = (row) =>
-  row.kind === 'image' && !row.deleted_at
+  (row.kind === 'image' || row.kind === 'voice') && !row.deleted_at
     ? {
         url: `/api/files/${row.id}`,
         name: row.file_name,
@@ -34,6 +34,7 @@ const attachmentOf = (row) =>
         size: row.file_size,
         width: row.image_width,
         height: row.image_height,
+        durationMs: row.duration_ms,
       }
     : null;
 
@@ -342,8 +343,8 @@ function createMessage({
     .prepare(
       `INSERT INTO messages
          (conversation_id, sender_id, kind, body, file_name, file_mime, file_size,
-          image_width, image_height, reply_to_id, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          image_width, image_height, duration_ms, reply_to_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       conversationId,
@@ -355,6 +356,7 @@ function createMessage({
       file?.size ?? null,
       file?.width ?? null,
       file?.height ?? null,
+      file?.durationMs ?? null,
       replyToId,
       Date.now()
     );

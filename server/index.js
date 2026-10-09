@@ -4,7 +4,7 @@ const path = require('node:path');
 const http = require('node:http');
 const express = require('express');
 
-const { router: api, MAX_IMAGE_BYTES } = require('./routes');
+const { router: api, MAX_IMAGE_BYTES, MAX_VOICE_BYTES } = require('./routes');
 const adminRouter = require('./admin');
 const { attach } = require('./realtime');
 const { startScheduler, wipeStatus } = require('./cleanup');
@@ -48,6 +48,7 @@ app.use((req, res, next) => {
       "script-src 'self'",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob:",
+      "media-src 'self' blob:",
       "font-src 'self'",
       "connect-src 'self' ws: wss:",
       "frame-ancestors 'none'",
@@ -59,7 +60,12 @@ app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'same-origin');
-  res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), payment=(), usb=()');
+  // `microphone=()` یعنی هیچ‌کس، حتی خودِ سایت — که ضبط پیام صوتی را می‌شکست.
+  // دسترسی فقط به خود برنامه داده می‌شود، نه فریم‌ها یا دامنه‌های دیگر.
+  res.setHeader(
+    'Permissions-Policy',
+    'microphone=(self), camera=(self), geolocation=(), payment=(), usb=(), interest-cohort=()'
+  );
   res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
   next();
 });
@@ -69,6 +75,7 @@ app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
     maxImageBytes: MAX_IMAGE_BYTES,
+    maxVoiceBytes: MAX_VOICE_BYTES,
     cleanup: { auto: wipeStatus().auto },
     retentionNotice: RETENTION_NOTICE,
   });

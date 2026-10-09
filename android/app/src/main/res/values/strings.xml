@@ -8,6 +8,7 @@
     <string name="offline_message">اتصال به سرور برقرار نشد.</string>
     <string name="change_server">تغییر نشانی سرور</string>
     <string name="camera_permission_needed">برای گرفتن عکس، اجازه‌ی دوربین لازم است.</string>
+    <string name="media_permission_needed">برای این کار باید اجازه‌ی دوربین یا میکروفون را بدهید.</string>
     <string name="notification_channel_messages">پیام‌های تازه</string>
     <string name="notification_channel_description">اعلان پیام‌های دریافتی 9chat</string>
     <string name="notification_permission_needed">برای دریافت اعلان، اجازه‌ی اعلان را بدهید.</string>

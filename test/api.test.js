@@ -223,6 +223,70 @@ test('ارسال عکس ذخیره و با ابعاد درست پخش می‌ش�
   assert.ok((await file.arrayBuffer()).byteLength > 0);
 });
 
+test('پیام صوتی ذخیره و پخش می‌شود', async () => {
+  // سرآیند WebM — همان چیزی که MediaRecorder در کروم و اندروید می‌سازد
+  const webm = Buffer.concat([
+    Buffer.from([0x1a, 0x45, 0xdf, 0xa3]),
+    Buffer.alloc(64, 0x11),
+  ]);
+  const form = new FormData();
+  form.append('voice', new Blob([webm], { type: 'audio/webm' }), 'voice');
+  form.append('durationMs', '4200');
+
+  const res = await fetch(`${base}/api/conversations/${context.conversationId}/voice`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${context.adminToken}` },
+    body: form,
+  });
+  const data = await res.json();
+  assert.equal(res.status, 201);
+  assert.equal(data.message.kind, 'voice');
+  assert.equal(data.message.attachment.mime, 'audio/webm');
+  assert.equal(data.message.attachment.durationMs, 4200);
+  context.voiceMessageId = data.message.id;
+
+  const file = await fetch(`${base}/api/files/${data.message.id}`, {
+    headers: { Authorization: `Bearer ${context.adminToken}` },
+  });
+  assert.equal(file.status, 200);
+  assert.equal(file.headers.get('content-type'), 'audio/webm');
+});
+
+test('مدت پیام صوتی به سقف محدود می‌شود و فایل نامعتبر رد می‌شود', async () => {
+  const webm = Buffer.concat([Buffer.from([0x1a, 0x45, 0xdf, 0xa3]), Buffer.alloc(32, 0x22)]);
+
+  // ادعای مدت ده ساعته باید به سقف پنج دقیقه بریده شود
+  const long = new FormData();
+  long.append('voice', new Blob([webm], { type: 'audio/webm' }), 'voice');
+  long.append('durationMs', String(10 * 60 * 60 * 1000));
+  const longRes = await fetch(`${base}/api/conversations/${context.conversationId}/voice`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${context.adminToken}` },
+    body: long,
+  });
+  const longData = await longRes.json();
+  assert.equal(longData.message.attachment.durationMs, 5 * 60 * 1000);
+
+  // چیزی که صدا نیست پذیرفته نمی‌شود، حتی با Content-Type درست
+  const fake = new FormData();
+  fake.append('voice', new Blob([Buffer.from('not audio at all')], { type: 'audio/webm' }), 'v');
+  const fakeRes = await fetch(`${base}/api/conversations/${context.conversationId}/voice`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${context.adminToken}` },
+    body: fake,
+  });
+  assert.equal(fakeRes.status, 400);
+});
+
+test('پیام صوتی قابل ویرایش نیست', async () => {
+  const res = await call(`/api/messages/${context.voiceMessageId}`, {
+    method: 'PATCH',
+    token: context.adminToken,
+    body: { body: 'متن جعلی' },
+  });
+  assert.equal(res.status, 400);
+});
+
 test('فایل غیرعکس پذیرفته نمی‌شود', async () => {
   const form = new FormData();
   form.append('image', new Blob([Buffer.from('MZ not-an-image')], { type: 'image/png' }), 'x.png');

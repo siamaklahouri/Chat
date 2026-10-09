@@ -15,7 +15,7 @@ const {
   SESSION_TTL_MS,
 } = require('./auth');
 const store = require('./store');
-const { sniff } = require('./images');
+const { sniff, sniffAudio } = require('./media');
 const { hub } = require('./realtime');
 const { createLimiter, rateLimit, ipOf } = require('./ratelimit');
 
@@ -23,12 +23,19 @@ const router = express.Router();
 
 const MAX_TEXT = 4000;
 const MAX_IMAGE_BYTES = Number(process.env.MAX_IMAGE_BYTES || 8 * 1024 * 1024);
+const MAX_VOICE_BYTES = Number(process.env.MAX_VOICE_BYTES || 6 * 1024 * 1024);
+const MAX_VOICE_MS = 5 * 60 * 1000;
 const USERNAME_RE = /^[a-zA-Z0-9_]{3,24}$/;
 const MIN_PASSWORD = 8;
 
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_IMAGE_BYTES, files: 1 },
+});
+
+const uploadVoice = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_VOICE_BYTES, files: 1 },
 });
 
 const fail = (res, status, error, code) => res.status(status).json({ error, code });
@@ -402,9 +409,58 @@ function fileAuth(req, res, next) {
   return requireApproved(req, res, next);
 }
 
+/* ------------------------------ پیام صوتی ------------------------------ */
+
+router.post(
+  '/conversations/:id/voice',
+  requireApproved,
+  rateLimit({ windowMs: 10 * 60_000, max: 60, scope: 'voice', by: 'user', message: 'تعداد پیام صوتی زیاد است.' }),
+  memberGuard,
+  uploadVoice.single('voice'),
+  (req, res) => {
+    if (!req.file) return fail(res, 400, 'فایلی دریافت نشد.');
+
+    const info = sniffAudio(req.file.buffer);
+    if (!info) return fail(res, 400, 'فایل صوتی معتبر نیست.');
+
+    // مدت را کلاینت گزارش می‌کند؛ فقط برای نمایش است، پس محدودش می‌کنیم.
+    const durationMs = Math.min(Math.max(Number(req.body.durationMs) || 0, 0), MAX_VOICE_MS);
+
+    const reply = resolveReplyTo(req.body.replyToId, req.conversationId);
+    if (!reply.ok) return fail(res, 400, 'پیام مرجع نامعتبر است.');
+
+    const message = store.createMessage({
+      conversationId: req.conversationId,
+      senderId: req.user.id,
+      kind: 'voice',
+      body: '',
+      replyToId: reply.id,
+      file: {
+        name: `voice.${info.ext}`,
+        mime: info.mime,
+        size: req.file.size,
+        durationMs,
+      },
+    });
+
+    try {
+      fs.writeFileSync(store.filePathFor(message.id), req.file.buffer);
+    } catch (err) {
+      store.deleteMessage(message.id);
+      console.error('[voice] ذخیره فایل ناموفق بود:', err);
+      return fail(res, 500, 'ذخیره پیام صوتی ناموفق بود.');
+    }
+
+    store.markRead(req.conversationId, req.user.id, message.id);
+    hub.sendToConversation(req.conversationId, { type: 'message:new', message });
+    res.status(201).json({ message, clientId: req.body.clientId ?? null });
+  }
+);
+
 router.get('/files/:id', fileAuth, (req, res) => {
   const row = store.rawMessage(Number(req.params.id));
-  if (!row || row.kind !== 'image' || row.deleted_at) return fail(res, 404, 'فایل پیدا نشد.');
+  const isFile = row && (row.kind === 'image' || row.kind === 'voice');
+  if (!isFile || row.deleted_at) return fail(res, 404, 'فایل پیدا نشد.');
   if (!store.isMember(row.conversation_id, req.user.id)) return fail(res, 403, 'دسترسی ندارید.');
 
   const filePath = store.filePathFor(row.id);
@@ -430,6 +486,7 @@ router.patch('/messages/:id', requireApproved, (req, res) => {
   if (!row || row.deleted_at) return fail(res, 404, 'پیام پیدا نشد.');
   if (row.sender_id !== req.user.id) return fail(res, 403, 'فقط پیام خودتان را می‌توانید ویرایش کنید.');
 
+  if (row.kind === 'voice') return fail(res, 400, 'پیام صوتی قابل ویرایش نیست.');
   const body = clean(req.body.body);
   if (row.kind === 'text' && !body) return fail(res, 400, 'متن پیام خالی است.');
   if (body.length > MAX_TEXT) return fail(res, 400, 'پیام بیش از حد طولانی است.');
@@ -523,4 +580,4 @@ router.delete('/conversations/:id/members/me', requireApproved, memberGuard, (re
   res.json({ ok: true });
 });
 
-module.exports = { router, MAX_IMAGE_BYTES };
+module.exports = { router, MAX_IMAGE_BYTES, MAX_VOICE_BYTES };

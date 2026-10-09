@@ -154,12 +154,28 @@
         <button id="cancelImage" class="icon-btn" aria-label="حذف عکس">✕</button>
       </div>
 
+      <!-- نوار ضبط صدا، فقط هنگام ضبط دیده می‌شود -->
+      <div id="recordBar" class="record-bar is-hidden">
+        <button id="cancelRecord" type="button" class="icon-btn" aria-label="لغو ضبط">
+          <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M9 3h6l1 2h4v2H4V5h4zM6 9h12l-1 11a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2z"/></svg>
+        </button>
+        <span class="record-dot" aria-hidden="true"></span>
+        <span id="recordTime" class="record-time">۰:۰۰</span>
+        <span class="record-hint muted">در حال ضبط…</span>
+        <button id="stopRecord" type="button" class="send-btn" aria-label="ارسال پیام صوتی">
+          <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M3 20.5 21 12 3 3.5 3 10l12 2-12 2z"/></svg>
+        </button>
+      </div>
+
       <form id="composer" class="composer">
         <input id="imageInput" type="file" accept="image/*" class="is-hidden" />
         <button id="attachBtn" type="button" class="icon-btn" title="ارسال عکس" aria-label="ارسال عکس">
           <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2Zm0 16H5l3.5-4.5 2.5 3L14.5 12 19 19Z"/></svg>
         </button>
         <textarea id="messageInput" rows="1" placeholder="پیام بنویسید…" maxlength="4000"></textarea>
+        <button id="micBtn" type="button" class="icon-btn" title="پیام صوتی" aria-label="ضبط پیام صوتی">
+          <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11Z"/></svg>
+        </button>
         <button id="sendBtn" class="send-btn" type="submit" aria-label="ارسال">
           <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M3 20.5 21 12 3 3.5 3 10l12 2-12 2z"/></svg>
         </button>

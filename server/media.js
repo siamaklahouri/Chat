@@ -77,4 +77,43 @@ function sniff(buf) {
   return null;
 }
 
-module.exports = { sniff };
+/**
+ * تشخیص فرمت صدا از روی بایت‌های آغازین. مرورگرها بسته به پلتفرم خروجی
+ * متفاوتی می‌دهند (کروم و اندروید معمولاً WebM/Opus، سافاری MP4)، پس نباید به
+ * Content-Type که کلاینت می‌فرستد اعتماد کرد.
+ */
+function sniffAudio(buf) {
+  if (!buf || buf.length < 16) return null;
+
+  // WebM / Matroska
+  if (buf[0] === 0x1a && buf[1] === 0x45 && buf[2] === 0xdf && buf[3] === 0xa3) {
+    return { mime: 'audio/webm', ext: 'webm' };
+  }
+
+  // OGG (Opus/Vorbis)
+  if (buf.slice(0, 4).toString('latin1') === 'OggS') {
+    return { mime: 'audio/ogg', ext: 'ogg' };
+  }
+
+  // MP4 / M4A — واژه‌ی ftyp در بایت چهارم به بعد می‌آید
+  if (buf.slice(4, 8).toString('latin1') === 'ftyp') {
+    return { mime: 'audio/mp4', ext: 'm4a' };
+  }
+
+  // WAV
+  if (
+    buf.slice(0, 4).toString('latin1') === 'RIFF' &&
+    buf.slice(8, 12).toString('latin1') === 'WAVE'
+  ) {
+    return { mime: 'audio/wav', ext: 'wav' };
+  }
+
+  // MP3 — یا با تگ ID3 شروع می‌شود یا مستقیم با فریم
+  if (buf.slice(0, 3).toString('latin1') === 'ID3' || (buf[0] === 0xff && (buf[1] & 0xe0) === 0xe0)) {
+    return { mime: 'audio/mpeg', ext: 'mp3' };
+  }
+
+  return null;
+}
+
+module.exports = { sniff, sniffAudio };

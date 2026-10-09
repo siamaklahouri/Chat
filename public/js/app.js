@@ -18,6 +18,9 @@
     replyTo: null,
     editing: null,
     pendingImage: null,
+    recorder: null,
+    recordStartedAt: 0,
+    recordTimer: null,
     typingPeers: new Map(),
     missedWhileUp: 0,
     typingTimer: null,
@@ -202,6 +205,7 @@
     if (message.deleted) return `${prefix}پیام حذف شد`;
     if (message.kind === 'system') return message.body;
     if (message.kind === 'image') return `${prefix}🖼 عکس${message.body ? ` — ${message.body}` : ''}`;
+    if (message.kind === 'voice') return `${prefix}🎤 پیام صوتی`;
     return prefix + message.body;
   }
 
@@ -328,7 +332,9 @@
         ? 'پیام حذف شد'
         : message.replyTo.kind === 'image'
           ? `🖼 عکس${message.replyTo.body ? ` — ${message.replyTo.body}` : ''}`
-          : message.replyTo.body;
+          : message.replyTo.kind === 'voice'
+            ? '🎤 پیام صوتی'
+            : message.replyTo.body;
       reply.append(who, text);
       reply.addEventListener('click', () => scrollToMessage(message.replyTo.id));
       bubble.appendChild(reply);
@@ -349,6 +355,10 @@
       button.appendChild(img);
       button.addEventListener('click', () => openLightbox(message.attachment));
       bubble.appendChild(button);
+    }
+
+    if (message.kind === 'voice' && message.attachment) {
+      bubble.appendChild(voicePlayer(message));
     }
 
     if (message.body || message.deleted) {
@@ -378,8 +388,10 @@
       const actions = document.createElement('div');
       actions.className = 'bubble-actions';
       actions.appendChild(iconButton('↩', 'پاسخ', () => startReply(message)));
-      if (mine) {
+      if (mine && message.kind !== 'voice') {
         actions.appendChild(iconButton('✎', 'ویرایش', () => startEdit(message)));
+      }
+      if (mine) {
         actions.appendChild(iconButton('🗑', 'حذف', () => removeMessage(message)));
       }
       bubble.appendChild(actions);
@@ -393,6 +405,80 @@
     if (message.pending) bubble.style.opacity = '.6';
     row.appendChild(bubble);
     return row;
+  }
+
+  const clockText = (ms) => {
+    const total = Math.round((ms || 0) / 1000);
+    return `${fa(Math.floor(total / 60))}:${String(total % 60).padStart(2, '0').replace(/\d/g, (d) => fa(d))}`;
+  };
+
+  /** پخش‌کننده‌ی پیام صوتی: دکمه‌ی پخش، نوار پیشرفت و زمان. */
+  function voicePlayer(message) {
+    const wrap = document.createElement('div');
+    wrap.className = 'voice';
+
+    // المان صدا داخل خود حباب می‌نشیند (نه فقط در حافظه)، وگرنه منطق
+    // «هر بار فقط یک صدا» که روی document کار می‌کند آن را پیدا نمی‌کند.
+    const audio = document.createElement('audio');
+    audio.src = fileUrl(message.attachment.url);
+    audio.preload = 'none';
+    audio.hidden = true;
+
+    const play = document.createElement('button');
+    play.type = 'button';
+    play.className = 'voice-play';
+    play.setAttribute('aria-label', 'پخش پیام صوتی');
+    const setIcon = (playing) => {
+      play.innerHTML = playing
+        ? '<svg viewBox="0 0 24 24"><path fill="currentColor" d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>'
+        : '<svg viewBox="0 0 24 24"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>';
+    };
+    setIcon(false);
+
+    const track = document.createElement('div');
+    track.className = 'voice-track';
+    const fill = document.createElement('div');
+    fill.className = 'voice-fill';
+    track.appendChild(fill);
+
+    const time = document.createElement('span');
+    time.className = 'voice-time';
+    time.textContent = clockText(message.attachment.durationMs);
+
+    play.addEventListener('click', () => {
+      if (audio.paused) {
+        // هر بار فقط یک صدا پخش شود.
+        document.querySelectorAll('audio').forEach((other) => other !== audio && other.pause());
+        audio.play().catch(() => toast('پخش صدا ممکن نشد.', true));
+      } else {
+        audio.pause();
+      }
+    });
+
+    audio.addEventListener('play', () => setIcon(true));
+    audio.addEventListener('pause', () => setIcon(false));
+    audio.addEventListener('timeupdate', () => {
+      const total = audio.duration || (message.attachment.durationMs || 0) / 1000;
+      if (total > 0) fill.style.width = `${Math.min(100, (audio.currentTime / total) * 100)}%`;
+      time.textContent = clockText(audio.currentTime * 1000);
+    });
+    audio.addEventListener('ended', () => {
+      setIcon(false);
+      fill.style.width = '0%';
+      time.textContent = clockText(message.attachment.durationMs);
+    });
+
+    track.addEventListener('click', (event) => {
+      const total = audio.duration;
+      if (!total) return;
+      const box = track.getBoundingClientRect();
+      // صفحه راست‌چین است، ولی نوار پیشرفت از چپ پر می‌شود.
+      const ratio = (event.clientX - box.left) / box.width;
+      audio.currentTime = Math.min(Math.max(ratio, 0), 1) * total;
+    });
+
+    wrap.append(play, track, time, audio);
+    return wrap;
   }
 
   /** آیکون وضعیت پیام: در حال ارسال → ارسال شد → خوانده شد. */
@@ -610,7 +696,11 @@
     bar.classList.remove('is-hidden');
     $('replyAuthor').textContent = senderName(state.replyTo.senderId);
     $('replyPreview').textContent =
-      state.replyTo.kind === 'image' ? '🖼 عکس' : state.replyTo.body;
+      state.replyTo.kind === 'image'
+        ? '🖼 عکس'
+        : state.replyTo.kind === 'voice'
+          ? '🎤 پیام صوتی'
+          : state.replyTo.body;
   }
 
   $('cancelReply').addEventListener('click', () => {
@@ -714,7 +804,10 @@
         method: 'POST',
         body: { body: text, replyToId },
       });
-      state.messages = state.messages.filter((m) => m !== optimistic);
+      if (state.messages.includes(optimistic)) {
+        state.messages = state.messages.filter((m) => m !== optimistic);
+        renderMessages();
+      }
     } catch (err) {
       state.messages = state.messages.filter((m) => m !== optimistic);
       renderMessages({ toBottom: true });
@@ -725,6 +818,86 @@
   });
 
   /* -------------------------------- عکس‌ها ------------------------------- */
+
+  /* -------------------------------- ضبط صدا ------------------------------- */
+
+  function pickAudioMime() {
+    // مرورگرها فرمت‌های متفاوتی پشتیبانی می‌کنند؛ اولین موجود را برمی‌داریم.
+    const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4'];
+    return candidates.find((type) => MediaRecorder.isTypeSupported?.(type)) || '';
+  }
+
+  async function startRecording() {
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      return toast('مرورگر شما ضبط صدا را پشتیبانی نمی‌کند.', true);
+    }
+
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      return toast('اجازه‌ی دسترسی به میکروفون داده نشد.', true);
+    }
+
+    const mimeType = pickAudioMime();
+    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    const chunks = [];
+    recorder.addEventListener('dataavailable', (event) => {
+      if (event.data.size > 0) chunks.push(event.data);
+    });
+    recorder.addEventListener('stop', () => {
+      stream.getTracks().forEach((track) => track.stop());
+      const durationMs = Date.now() - state.recordStartedAt;
+      const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
+      state.recorder = null;
+      clearInterval(state.recordTimer);
+      $('recordBar').classList.add('is-hidden');
+      $('composer').classList.remove('is-hidden');
+      if (recorder.cancelled || blob.size === 0 || durationMs < 600) return;
+      sendVoice(blob, durationMs);
+    });
+
+    state.recorder = recorder;
+    state.recordStartedAt = Date.now();
+    recorder.start();
+
+    $('composer').classList.add('is-hidden');
+    $('recordBar').classList.remove('is-hidden');
+    $('recordTime').textContent = clockText(0);
+    state.recordTimer = setInterval(() => {
+      const elapsed = Date.now() - state.recordStartedAt;
+      $('recordTime').textContent = clockText(elapsed);
+      if (elapsed >= 5 * 60 * 1000) stopRecording();   // سقف پنج دقیقه
+    }, 200);
+  }
+
+  function stopRecording({ cancel = false } = {}) {
+    const recorder = state.recorder;
+    if (!recorder) return;
+    recorder.cancelled = cancel;
+    recorder.stop();
+  }
+
+  async function sendVoice(blob, durationMs) {
+    const replyToId = state.replyTo?.id ?? null;
+    state.replyTo = null;
+    updateReplyBar();
+
+    const form = new FormData();
+    form.append('voice', blob, 'voice');
+    form.append('durationMs', String(Math.round(durationMs)));
+    if (replyToId) form.append('replyToId', String(replyToId));
+
+    try {
+      await api(`/conversations/${state.activeId}/voice`, { method: 'POST', body: form, raw: true });
+    } catch (err) {
+      toast(err.message, true);
+    }
+  }
+
+  $('micBtn').addEventListener('click', startRecording);
+  $('stopRecord').addEventListener('click', () => stopRecording());
+  $('cancelRecord').addEventListener('click', () => stopRecording({ cancel: true }));
 
   $('attachBtn').addEventListener('click', () => $('imageInput').click());
 
@@ -880,6 +1053,13 @@
         break;
 
       case 'message:new': {
+        // پیام خودمان از سرور برگشته؛ نسخه‌ی موقتی که محلی ساخته بودیم باید برود،
+        // وگرنه هر دو با هم روی صفحه می‌مانند.
+        if (event.message.senderId === state.me.id) {
+          state.messages = state.messages.filter(
+            (m) => !(m.pending && m.kind === event.message.kind && m.body === event.message.body)
+          );
+        }
         const conv = state.conversations.get(event.message.conversationId);
         if (!conv) {
           loadConversations();
@@ -1022,7 +1202,12 @@
    */
   async function notify(conv, message) {
     if (document.visibilityState === 'visible') return;
-    const body = message.kind === 'image' ? '🖼 عکس فرستاد' : message.body.slice(0, 120);
+    const body =
+      message.kind === 'image'
+        ? '🖼 عکس فرستاد'
+        : message.kind === 'voice'
+          ? '🎤 پیام صوتی فرستاد'
+          : message.body.slice(0, 120);
 
     if (window.AndroidBridge?.notify) {
       try {
