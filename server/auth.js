@@ -2,9 +2,10 @@
 
 const crypto = require('node:crypto');
 const bcrypt = require('bcryptjs');
-const { db } = require('./db');
+const { db, getMeta, setMeta } = require('./db');
 
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
+const FILE_TOKEN_TTL_MS = 1000 * 60 * 60 * 24;   // 24 ساعت
 
 const hashPassword = (plain) => bcrypt.hashSync(plain, 10);
 const verifyPassword = (plain, hash) => bcrypt.compareSync(plain, hash);
@@ -80,7 +81,55 @@ function requireAdmin(req, res, next) {
   });
 }
 
+/* ---------------------------- توکن فایل‌ها ---------------------------- */
+
+/**
+ * تگ <img> نمی‌تواند هدر Authorization بفرستد، پس آدرس عکس باید خودش حامل
+ * اعتبار باشد. گذاشتن توکن نشست در URL بد است: در لاگ nginx، تاریخچه‌ی مرورگر
+ * و هدر Referer می‌نشیند و دزدیدنش یعنی دسترسی کامل به حساب.
+ *
+ * به‌جایش یک توکن جدا با امضای HMAC صادر می‌شود که فقط برای خواندن فایل کار
+ * می‌کند، ۲۴ ساعت اعتبار دارد و قابل تبدیل به نشست نیست.
+ */
+function fileTokenSecret() {
+  let secret = getMeta('file_token_secret', null);
+  if (!secret) {
+    secret = crypto.randomBytes(32).toString('hex');
+    setMeta('file_token_secret', secret);
+  }
+  return secret;
+}
+
+const signFilePayload = (payload) =>
+  crypto.createHmac('sha256', fileTokenSecret()).update(payload).digest('hex').slice(0, 32);
+
+function createFileToken(userId) {
+  const expiresAt = Date.now() + FILE_TOKEN_TTL_MS;
+  const payload = `${userId}.${expiresAt}`;
+  return `${payload}.${signFilePayload(payload)}`;
+}
+
+/** شناسه‌ی کاربر را برمی‌گرداند، یا null اگر توکن نامعتبر یا منقضی باشد. */
+function userIdFromFileToken(token) {
+  if (typeof token !== 'string') return null;
+  const parts = token.split('.');
+  if (parts.length !== 3) return null;
+
+  const [rawUserId, rawExpiry, signature] = parts;
+  const expected = signFilePayload(`${rawUserId}.${rawExpiry}`);
+  const given = Buffer.from(signature);
+  const want = Buffer.from(expected);
+  if (given.length !== want.length || !crypto.timingSafeEqual(given, want)) return null;
+
+  if (!(Number(rawExpiry) > Date.now())) return null;
+  const userId = Number(rawUserId);
+  return Number.isInteger(userId) ? userId : null;
+}
+
 module.exports = {
+  createFileToken,
+  userIdFromFileToken,
+  FILE_TOKEN_TTL_MS,
   hashPassword,
   verifyPassword,
   createSession,

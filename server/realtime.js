@@ -110,7 +110,26 @@ function setTyping(conversationId, userId, isTyping) {
 }
 
 function attach(server) {
-  const wss = new WebSocketServer({ server, path: '/ws' });
+  const wss = new WebSocketServer({
+    server,
+    path: '/ws',
+    // کلاینت فقط رویدادهای کوچک «در حال نوشتن» می‌فرستد؛ بدون این سقف، یک
+    // اتصال می‌توانست با فریم‌های عظیم حافظه‌ی سرور را پر کند.
+    maxPayload: 16 * 1024,
+    verifyClient: ({ origin, req }, done) => {
+      // اتصال از صفحه‌ی سایت دیگر پذیرفته نمی‌شود. (کلاینت‌های غیرمرورگری
+      // مثل اپ اندروید اصلاً هدر Origin نمی‌فرستند و مجازند.)
+      if (!origin) return done(true);
+      const host = req.headers.host;
+      let ok = false;
+      try {
+        ok = new URL(origin).host === host;
+      } catch {
+        ok = false;
+      }
+      done(ok, 403, 'origin not allowed');
+    },
+  });
 
   wss.on('connection', (socket, req) => {
     const url = new URL(req.url, 'http://localhost');

@@ -103,7 +103,7 @@ const context = {};
 test('نخستین کاربر به‌صورت خودکار مدیر و تاییدشده است', async () => {
   const res = await call('/api/auth/register', {
     method: 'POST',
-    body: { username: 'admin', displayName: 'مدیر', password: 'secret123' },
+    body: { username: 'admin', displayName: 'مدیر', password: 'secret1234' },
   });
   assert.equal(res.status, 201);
   assert.equal(res.body.user.isAdmin, true);
@@ -114,7 +114,7 @@ test('نخستین کاربر به‌صورت خودکار مدیر و تایی�
 test('کاربر تازه در انتظار تایید می‌ماند و نمی‌تواند وارد شود', async () => {
   const register = await call('/api/auth/register', {
     method: 'POST',
-    body: { username: 'sara', displayName: 'سارا', password: 'secret123' },
+    body: { username: 'sara', displayName: 'سارا', password: 'secret1234' },
   });
   assert.equal(register.status, 202);
   assert.equal(register.body.pending, true);
@@ -122,7 +122,7 @@ test('کاربر تازه در انتظار تایید می‌ماند و نمی
 
   const login = await call('/api/auth/login', {
     method: 'POST',
-    body: { username: 'sara', password: 'secret123' },
+    body: { username: 'sara', password: 'secret1234' },
   });
   assert.equal(login.status, 403);
   assert.equal(login.body.code, 'pending');
@@ -131,13 +131,13 @@ test('کاربر تازه در انتظار تایید می‌ماند و نمی
 test('رمز کوتاه و نام کاربری تکراری رد می‌شوند', async () => {
   const short = await call('/api/auth/register', {
     method: 'POST',
-    body: { username: 'reza', displayName: 'رضا', password: '123' },
+    body: { username: 'reza', displayName: 'رضا', password: '1234567' },
   });
   assert.equal(short.status, 400);
 
   const duplicate = await call('/api/auth/register', {
     method: 'POST',
-    body: { username: 'sara', displayName: 'سارا', password: 'secret123' },
+    body: { username: 'sara', displayName: 'سارا', password: 'secret1234' },
   });
   assert.equal(duplicate.status, 409);
 });
@@ -157,7 +157,7 @@ test('مدیر کاربر را تایید می‌کند و کاربر وارد �
 
   const login = await call('/api/auth/login', {
     method: 'POST',
-    body: { username: 'sara', password: 'secret123' },
+    body: { username: 'sara', password: 'secret1234' },
   });
   assert.equal(login.status, 200);
   context.saraToken = login.body.token;
@@ -176,7 +176,7 @@ test('گفتگوی دوطرفه ساخته می‌شود و پیام متنی ز
   const created = await call('/api/conversations/direct', {
     method: 'POST',
     token: context.adminToken,
-    body: { userId: context.saraId },
+    body: { username: 'sara' },
   });
   assert.equal(created.status, 201);
   context.conversationId = created.body.conversation.id;
@@ -237,7 +237,7 @@ test('فایل غیرعکس پذیرفته نمی‌شود', async () => {
 test('کاربر بیرونی نه گفتگو را می‌بیند نه فایل را', async () => {
   await call('/api/auth/register', {
     method: 'POST',
-    body: { username: 'ali', displayName: 'علی', password: 'secret123' },
+    body: { username: 'ali', displayName: 'علی', password: 'secret1234' },
   });
   const outsider = await call('/api/admin/users?status=pending', { token: context.adminToken });
   const aliId = outsider.body.users[0].id;
@@ -248,7 +248,7 @@ test('کاربر بیرونی نه گفتگو را می‌بیند نه فایل
   });
   const login = await call('/api/auth/login', {
     method: 'POST',
-    body: { username: 'ali', password: 'secret123' },
+    body: { username: 'ali', password: 'secret1234' },
   });
   const aliToken = login.body.token;
 
@@ -379,6 +379,112 @@ test('پاکسازی، پیام‌ها و فایل‌ها را حذف و حسا�
   for (const socket of context.sockets) socket.close();
 });
 
+test('امنیت: توکن نشست دیگر در نشانی فایل کار نمی‌کند', async () => {
+  const form = new FormData();
+  form.append('image', new Blob([pngBuffer(6, 6)], { type: 'image/png' }), 'secret.png');
+  const upload = await fetch(`${base}/api/conversations/${context.conversationId}/images`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${context.adminToken}` },
+    body: form,
+  });
+  const { message } = await upload.json();
+
+  // توکن نشست در کوئری: دیگر پذیرفته نمی‌شود
+  const withSession = await fetch(
+    `${base}/api/files/${message.id}?token=${encodeURIComponent(context.adminToken)}`
+  );
+  assert.equal(withSession.status, 401, 'توکن نشست نباید از طریق URL کار کند');
+
+  // توکن مخصوص فایل: کار می‌کند
+  const me = await call('/api/me', { token: context.adminToken });
+  assert.ok(me.body.fileToken, 'سرور باید توکن فایل بدهد');
+  const withFileToken = await fetch(
+    `${base}/api/files/${message.id}?t=${encodeURIComponent(me.body.fileToken)}`
+  );
+  assert.equal(withFileToken.status, 200);
+
+  // توکن دستکاری‌شده رد می‌شود
+  const tampered = me.body.fileToken.slice(0, -1) + (me.body.fileToken.endsWith('a') ? 'b' : 'a');
+  const forged = await fetch(`${base}/api/files/${message.id}?t=${encodeURIComponent(tampered)}`);
+  assert.equal(forged.status, 403, 'امضای دستکاری‌شده باید رد شود');
+
+  // توکن فایلِ یک کاربر، به فایل گفتگویی که عضوش نیست دسترسی نمی‌دهد
+  const aliMe = await call('/api/me', { token: context.aliToken });
+  const outsider = await fetch(
+    `${base}/api/files/${message.id}?t=${encodeURIComponent(aliMe.body.fileToken)}`
+  );
+  assert.equal(outsider.status, 403, 'عضو نبودن در گفتگو باید جلوی دسترسی را بگیرد');
+});
+
+test('امنیت: شناسه‌ی عددی کاربر، راه دور زدن جستجوی دقیق نیست', async () => {
+  // پیش از این با فرستادن userId می‌شد با شمردن ۱، ۲، ۳… همه‌ی کاربران را پیدا کرد.
+  const byNumericId = await call('/api/conversations/direct', {
+    method: 'POST',
+    token: context.aliToken,
+    body: { userId: 1 },
+  });
+  assert.equal(byNumericId.status, 400, 'شناسه‌ی عددی نباید پذیرفته شود');
+
+  const unknown = await call('/api/conversations/direct', {
+    method: 'POST',
+    token: context.aliToken,
+    body: { username: 'nobody_here' },
+  });
+  assert.equal(unknown.status, 404);
+});
+
+test('امنیت: تلاش‌های پیاپی برای حدس رمز مسدود می‌شود', async () => {
+  let blockedAt = 0;
+  for (let attempt = 1; attempt <= 25; attempt += 1) {
+    const res = await call('/api/auth/login', {
+      method: 'POST',
+      body: { username: 'admin', password: `wrong-${attempt}` },
+    });
+    if (res.status === 429) {
+      blockedAt = attempt;
+      break;
+    }
+    assert.equal(res.status, 401);
+  }
+  assert.ok(blockedAt > 0 && blockedAt <= 21, `باید مسدود می‌شد، شد در تلاش ${blockedAt}`);
+});
+
+test('امنیت: هدرهای محافظ روی پاسخ‌ها ست شده‌اند', async () => {
+  const res = await fetch(`${base}/`);
+  const csp = res.headers.get('content-security-policy') || '';
+  assert.match(csp, /default-src 'self'/);
+  assert.match(csp, /script-src 'self'/);
+  assert.match(csp, /frame-ancestors 'none'/);
+  assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
+  assert.equal(res.headers.get('x-frame-options'), 'DENY');
+  assert.equal(res.headers.get('x-powered-by'), null);
+});
+
+test('امنیت: مسیر سلامت هیچ آماری لو نمی‌دهد', async () => {
+  const res = await call('/api/health');
+  assert.equal(res.status, 200);
+  assert.equal(res.body.users, undefined, 'تعداد کاربران نباید عمومی باشد');
+  assert.equal(res.body.cleanup.lastWipeAt, undefined);
+});
+
+test('امنیت: عکس با هدرهایی سرو می‌شود که اجرای محتوا را ممنوع کند', async () => {
+  const form = new FormData();
+  form.append('image', new Blob([pngBuffer(4, 4)], { type: 'image/png' }), 'x.png');
+  const upload = await fetch(`${base}/api/conversations/${context.conversationId}/images`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${context.adminToken}` },
+    body: form,
+  });
+  const { message } = await upload.json();
+
+  const file = await fetch(`${base}/api/files/${message.id}`, {
+    headers: { Authorization: `Bearer ${context.adminToken}` },
+  });
+  assert.equal(file.status, 200);
+  assert.equal(file.headers.get('x-content-type-options'), 'nosniff');
+  assert.match(file.headers.get('content-security-policy') || '', /default-src 'none'/);
+});
+
 test('پاکسازی خودکار به‌صورت پیش‌فرض خاموش است', async () => {
   const { setMeta } = require('../server/db.js');
   const { runIfDue, wipeStatus } = require('../server/cleanup.js');
@@ -443,7 +549,7 @@ test('حذف گفتگو فقط برای همان کاربر انجام می‌ش
   const created = await call('/api/conversations/direct', {
     method: 'POST',
     token: context.adminToken,
-    body: { userId: context.aliId },
+    body: { username: 'ali' },
   });
   const convId = created.body.conversation.id;
 
@@ -492,7 +598,7 @@ test('تغییر رمز: رمز فعلی اشتباه رد می‌شود و رم
   // آزمون مسدودسازی، نشست‌های این کاربر را باطل کرده بود؛ یک نشست تازه می‌گیریم.
   const relogin = await call('/api/auth/login', {
     method: 'POST',
-    body: { username: 'sara', password: 'secret123' },
+    body: { username: 'sara', password: 'secret1234' },
   });
   assert.equal(relogin.status, 200);
   context.saraToken = relogin.body.token;
@@ -500,21 +606,21 @@ test('تغییر رمز: رمز فعلی اشتباه رد می‌شود و رم
   const wrong = await call('/api/me/password', {
     method: 'POST',
     token: context.saraToken,
-    body: { currentPassword: 'not-the-password', newPassword: 'brandNew123' },
+    body: { currentPassword: 'not-the-password', newPassword: 'brandNew1234' },
   });
   assert.equal(wrong.status, 403);
 
   const short = await call('/api/me/password', {
     method: 'POST',
     token: context.saraToken,
-    body: { currentPassword: 'secret123', newPassword: '123' },
+    body: { currentPassword: 'secret1234', newPassword: '1234567' },
   });
   assert.equal(short.status, 400);
 
   const ok = await call('/api/me/password', {
     method: 'POST',
     token: context.saraToken,
-    body: { currentPassword: 'secret123', newPassword: 'brandNew123' },
+    body: { currentPassword: 'secret1234', newPassword: 'brandNew1234' },
   });
   assert.equal(ok.status, 200);
   assert.ok(ok.body.token, 'باید نشست تازه بدهد');
@@ -530,13 +636,13 @@ test('تغییر رمز: رمز فعلی اشتباه رد می‌شود و رم
   // ورود با رمز قدیمی دیگر ممکن نیست، با رمز تازه هست
   const oldLogin = await call('/api/auth/login', {
     method: 'POST',
-    body: { username: 'sara', password: 'secret123' },
+    body: { username: 'sara', password: 'secret1234' },
   });
   assert.equal(oldLogin.status, 401);
 
   const newLogin = await call('/api/auth/login', {
     method: 'POST',
-    body: { username: 'sara', password: 'brandNew123' },
+    body: { username: 'sara', password: 'brandNew1234' },
   });
   assert.equal(newLogin.status, 200);
   context.saraToken = newLogin.body.token;

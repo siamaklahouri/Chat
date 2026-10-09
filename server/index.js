@@ -26,17 +26,50 @@ const RETENTION_NOTICE =
 
 const app = express();
 app.disable('x-powered-by');
-app.set('trust proxy', true);
+// فقط به یک پراکسی (nginx روی همین ماشین) اعتماد می‌شود. با `true` هر کلاینتی
+// می‌توانست با هدر X-Forwarded-For آی‌پی جعل کند و محدودیت نرخ را دور بزند.
+app.set('trust proxy', 1);
 
-app.use(express.json({ limit: '1mb' }));
-app.use(express.urlencoded({ extended: false }));
+app.use(express.json({ limit: '256kb' }));
+app.use(express.urlencoded({ extended: false, limit: '64kb' }));
 
+/**
+ * هدرهای امنیتی. اینجا ست می‌شوند نه در nginx، تا هر جا برنامه اجرا شود
+ * (پشت پراکسی، مستقیم، یا روی شبکه‌ی محلی) همراهش باشند.
+ *
+ * CSP سخت‌گیرانه است چون برنامه هیچ اسکریپت inline و هیچ منبع بیرونی ندارد؛
+ * فقط استایل inline مجاز است که نمی‌تواند کد اجرا کند.
+ */
+app.use((req, res, next) => {
+  res.setHeader(
+    'Content-Security-Policy',
+    [
+      "default-src 'self'",
+      "script-src 'self'",
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data: blob:",
+      "font-src 'self'",
+      "connect-src 'self' ws: wss:",
+      "frame-ancestors 'none'",
+      "base-uri 'none'",
+      "form-action 'self'",
+      "object-src 'none'",
+    ].join('; ')
+  );
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'same-origin');
+  res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), payment=(), usb=()');
+  res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+  next();
+});
+
+// عمداً هیچ آماری (مثل تعداد کاربران) برنمی‌گرداند؛ این مسیر عمومی است.
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
-    users: store.countUsers(),
     maxImageBytes: MAX_IMAGE_BYTES,
-    cleanup: wipeStatus(),
+    cleanup: { auto: wipeStatus().auto },
     retentionNotice: RETENTION_NOTICE,
   });
 });

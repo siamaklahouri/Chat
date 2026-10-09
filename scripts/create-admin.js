@@ -16,8 +16,8 @@ if (!/^[a-zA-Z0-9_]{3,24}$/.test(username)) {
   console.error('نام کاربری باید ۳ تا ۲۴ نویسه انگلیسی، عدد یا _ باشد.');
   process.exit(1);
 }
-if (password.length < 6) {
-  console.error('رمز عبور باید حداقل ۶ نویسه باشد.');
+if (password.length < 8) {
+  console.error('رمز عبور باید حداقل ۸ نویسه باشد.');
   process.exit(1);
 }
 

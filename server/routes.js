@@ -5,22 +5,26 @@ const express = require('express');
 const multer = require('multer');
 const {
   createSession,
+  createFileToken,
   destroySession,
   requireAuth,
   requireApproved,
   userForToken,
+  userIdFromFileToken,
   verifyPassword,
   SESSION_TTL_MS,
 } = require('./auth');
 const store = require('./store');
 const { sniff } = require('./images');
 const { hub } = require('./realtime');
+const { createLimiter, rateLimit, ipOf } = require('./ratelimit');
 
 const router = express.Router();
 
 const MAX_TEXT = 4000;
 const MAX_IMAGE_BYTES = Number(process.env.MAX_IMAGE_BYTES || 8 * 1024 * 1024);
 const USERNAME_RE = /^[a-zA-Z0-9_]{3,24}$/;
+const MIN_PASSWORD = 8;
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -28,6 +32,17 @@ const upload = multer({
 });
 
 const fail = (res, status, error, code) => res.status(status).json({ error, code });
+
+/* ----------------------------- محدودیت نرخ ----------------------------- */
+
+// ورود: هم روی آی‌پی و هم روی نام کاربری شمرده می‌شود تا نه یک آی‌پی بتواند
+// روی چند حساب حدس بزند و نه چند آی‌پی روی یک حساب.
+const loginByIp = createLimiter({ windowMs: 15 * 60_000, max: 20 });
+const loginByUser = createLimiter({ windowMs: 15 * 60_000, max: 10 });
+
+// هش بی‌مصرف برای یکسان کردن زمان پاسخ وقتی نام کاربری وجود ندارد؛ بدون این،
+// اختلاف زمانِ پاسخ لو می‌دهد که کدام نام کاربری ثبت شده است.
+const DUMMY_HASH = '$2b$10$CwTycUXWue0Thq9StjUM0uJ8e1S1Qk1q0bNCcC1r0A2hQnJ0Vn3Hy';
 const clean = (value) => (typeof value === 'string' ? value.trim() : '');
 const withPresence = (user) => user && { ...user, online: hub.isOnline(user.id) };
 
@@ -46,7 +61,15 @@ function setSessionCookie(req, res, token) {
 
 /* -------------------------------- auth -------------------------------- */
 
-router.post('/auth/register', (req, res) => {
+router.post(
+  '/auth/register',
+  rateLimit({
+    windowMs: 60 * 60_000,
+    max: 5,
+    scope: 'register',
+    message: 'تعداد ثبت‌نام از این دستگاه زیاد است؛ یک ساعت دیگر تلاش کنید.',
+  }),
+  (req, res) => {
   const username = clean(req.body.username).toLowerCase();
   const displayName = clean(req.body.displayName) || username;
   const password = typeof req.body.password === 'string' ? req.body.password : '';
@@ -54,7 +77,9 @@ router.post('/auth/register', (req, res) => {
   if (!USERNAME_RE.test(username)) {
     return fail(res, 400, 'نام کاربری باید ۳ تا ۲۴ نویسه انگلیسی، عدد یا _ باشد.');
   }
-  if (password.length < 6) return fail(res, 400, 'رمز عبور باید حداقل ۶ نویسه باشد.');
+  if (password.length < MIN_PASSWORD) {
+    return fail(res, 400, `رمز عبور باید حداقل ${MIN_PASSWORD} نویسه باشد.`);
+  }
   if (displayName.length > 40) return fail(res, 400, 'نام نمایشی طولانی است.');
   if (store.getUserByUsername(username)) return fail(res, 409, 'این نام کاربری قبلاً ثبت شده است.');
 
@@ -80,14 +105,34 @@ router.post('/auth/register', (req, res) => {
   }
   const { token } = createSession(user.id);
   setSessionCookie(req, res, token);
-  res.status(201).json({ token, user: payload, pending: false });
-});
+  res.status(201).json({ token, user: payload, pending: false, fileToken: createFileToken(user.id) });
+  }
+);
 
 router.post('/auth/login', (req, res) => {
   const username = clean(req.body.username).toLowerCase();
   const password = typeof req.body.password === 'string' ? req.body.password : '';
+
+  const ipKey = `login:${ipOf(req)}`;
+  const userKey = `login:${username}`;
+  const blocked = loginByIp.peek(ipKey).allowed === false || loginByUser.peek(userKey).allowed === false;
+  if (blocked) {
+    const wait = Math.max(
+      loginByIp.peek(ipKey).retryAfterSeconds,
+      loginByUser.peek(userKey).retryAfterSeconds
+    );
+    res.setHeader('Retry-After', String(wait));
+    return fail(res, 429, `تلاش‌های ناموفق زیاد است. ${Math.ceil(wait / 60)} دقیقه دیگر دوباره تلاش کنید.`);
+  }
+
   const user = store.getUserByUsername(username);
-  if (!user || !verifyPassword(password, user.password_hash)) {
+  // همیشه یک بار bcrypt اجرا می‌شود، حتی وقتی کاربر وجود ندارد، تا زمان پاسخ
+  // نشان ندهد کدام نام کاربری ثبت شده است.
+  const passwordOk = verifyPassword(password, user ? user.password_hash : DUMMY_HASH);
+
+  if (!user || !passwordOk) {
+    loginByIp.fail(ipKey);
+    loginByUser.fail(userKey);
     return fail(res, 401, 'نام کاربری یا رمز عبور نادرست است.');
   }
   if (user.status === 'pending') {
@@ -95,10 +140,12 @@ router.post('/auth/login', (req, res) => {
   }
   if (user.status === 'blocked') return fail(res, 403, 'حساب شما مسدود شده است.', 'blocked');
 
+  loginByIp.reset(ipKey);
+  loginByUser.reset(userKey);
   store.touchUser(user.id);
   const { token } = createSession(user.id);
   setSessionCookie(req, res, token);
-  res.json({ token, user: store.publicUser(user) });
+  res.json({ token, user: store.publicUser(user), fileToken: createFileToken(user.id) });
 });
 
 router.post('/auth/logout', requireAuth, (req, res) => {
@@ -110,7 +157,7 @@ router.post('/auth/logout', requireAuth, (req, res) => {
 /* ---------------------------------- me --------------------------------- */
 
 router.get('/me', requireAuth, (req, res) => {
-  res.json({ user: store.publicUser(req.user) });
+  res.json({ user: store.publicUser(req.user), fileToken: createFileToken(req.user.id) });
 });
 
 router.patch('/me', requireApproved, (req, res) => {
@@ -123,14 +170,20 @@ router.patch('/me', requireApproved, (req, res) => {
   res.json({ user: payload });
 });
 
-router.post('/me/password', requireApproved, (req, res) => {
+router.post(
+  '/me/password',
+  requireApproved,
+  rateLimit({ windowMs: 15 * 60_000, max: 5, scope: 'password', by: 'user' }),
+  (req, res) => {
   const currentPassword = typeof req.body.currentPassword === 'string' ? req.body.currentPassword : '';
   const newPassword = typeof req.body.newPassword === 'string' ? req.body.newPassword : '';
 
   if (!verifyPassword(currentPassword, req.user.password_hash)) {
     return fail(res, 403, 'رمز فعلی درست نیست.');
   }
-  if (newPassword.length < 6) return fail(res, 400, 'رمز تازه باید حداقل ۶ نویسه باشد.');
+  if (newPassword.length < MIN_PASSWORD) {
+    return fail(res, 400, `رمز تازه باید حداقل ${MIN_PASSWORD} نویسه باشد.`);
+  }
   if (newPassword === currentPassword) return fail(res, 400, 'رمز تازه با رمز فعلی یکی است.');
 
   // تغییر رمز همه‌ی نشست‌ها را باطل می‌کند (یعنی دستگاه‌های دیگر بیرون می‌افتند)،
@@ -139,14 +192,20 @@ router.post('/me/password', requireApproved, (req, res) => {
   const { token } = createSession(req.user.id);
   setSessionCookie(req, res, token);
   res.json({ token, message: 'رمز عبور عوض شد. دستگاه‌های دیگر باید دوباره وارد شوند.' });
-});
+  }
+);
 
-router.get('/users', requireApproved, (req, res) => {
+router.get(
+  '/users',
+  requireApproved,
+  rateLimit({ windowMs: 60_000, max: 30, scope: 'lookup', by: 'user' }),
+  (req, res) => {
   // فقط تطبیق دقیقِ نام کاربری؛ هر ورودی‌ای که شکل نام کاربری ندارد، نتیجه‌ی خالی می‌دهد.
   const handle = clean(req.query.q).replace(/^@/, '');
   if (!USERNAME_RE.test(handle)) return res.json({ users: [] });
   res.json({ users: store.findUserByHandle(handle, req.user.id).map(withPresence) });
-});
+  }
+);
 
 /* ----------------------------- conversations ---------------------------- */
 
@@ -154,11 +213,26 @@ router.get('/conversations', requireApproved, (req, res) => {
   res.json({ conversations: store.listConversations(req.user.id).map(decorateConversation) });
 });
 
-router.post('/conversations/direct', requireApproved, (req, res) => {
-  const userId = Number(req.body.userId);
-  if (!Number.isInteger(userId) || userId === req.user.id) return fail(res, 400, 'کاربر نامعتبر است.');
-  const target = store.getUserById(userId);
-  if (!target || target.status !== 'approved') return fail(res, 404, 'کاربر پیدا نشد.');
+/**
+ * گفتگوی تازه با «نام کاربری» ساخته می‌شود، نه شناسه‌ی عددی.
+ *
+ * پیش از این شناسه‌ی عددی پذیرفته می‌شد و همین اجازه می‌داد کسی با شمردن
+ * ۱، ۲، ۳… همه‌ی کاربران را پیدا کند — یعنی قانون «فقط با شناسه‌ی دقیق» عملاً
+ * دور زده می‌شد.
+ */
+router.post(
+  '/conversations/direct',
+  requireApproved,
+  rateLimit({ windowMs: 60 * 60_000, max: 30, scope: 'direct', by: 'user' }),
+  (req, res) => {
+  const handle = clean(req.body.username).replace(/^@/, '');
+  if (!USERNAME_RE.test(handle)) return fail(res, 400, 'نام کاربری نامعتبر است.');
+
+  const target = store.getUserByUsername(handle);
+  if (!target || target.status !== 'approved' || target.id === req.user.id) {
+    return fail(res, 404, 'کاربر پیدا نشد.');
+  }
+  const userId = target.id;
 
   const { conversation, created } = store.getOrCreateDirect(req.user.id, userId);
   if (created) {
@@ -170,7 +244,8 @@ router.post('/conversations/direct', requireApproved, (req, res) => {
   res.status(created ? 201 : 200).json({
     conversation: decorateConversation(store.conversationView(conversation.id, req.user.id)),
   });
-});
+  }
+);
 
 router.post('/conversations/group', requireApproved, (req, res) => {
   const title = clean(req.body.title);
@@ -236,7 +311,12 @@ function resolveReplyTo(value, conversationId) {
   return { ok: true, id: target.id };
 }
 
-router.post('/conversations/:id/messages', requireApproved, memberGuard, (req, res) => {
+router.post(
+  '/conversations/:id/messages',
+  requireApproved,
+  rateLimit({ windowMs: 60_000, max: 90, scope: 'send', by: 'user', message: 'سرعت ارسال پیام زیاد است.' }),
+  memberGuard,
+  (req, res) => {
   const body = clean(req.body.body);
   if (!body) return fail(res, 400, 'متن پیام خالی است.');
   if (body.length > MAX_TEXT) return fail(res, 400, 'پیام بیش از حد طولانی است.');
@@ -253,13 +333,15 @@ router.post('/conversations/:id/messages', requireApproved, memberGuard, (req, r
   store.markRead(req.conversationId, req.user.id, message.id);
   hub.sendToConversation(req.conversationId, { type: 'message:new', message });
   res.status(201).json({ message, clientId: req.body.clientId ?? null });
-});
+  }
+);
 
 /* -------------------------------- images ------------------------------- */
 
 router.post(
   '/conversations/:id/images',
   requireApproved,
+  rateLimit({ windowMs: 10 * 60_000, max: 40, scope: 'upload', by: 'user', message: 'تعداد آپلود عکس زیاد است.' }),
   memberGuard,
   upload.single('image'),
   (req, res) => {
@@ -302,15 +384,22 @@ router.post(
 );
 
 /**
- * تگ <img> نمی‌تواند هدر Authorization بفرستد، پس روی همین مسیر توکن از کوئری
- * هم پذیرفته می‌شود (مانند وب‌سوکت). بقیه‌ی مسیرها فقط هدر یا کوکی را می‌پذیرند.
+ * اعتبارسنجی مسیر فایل‌ها. اولویت با نشست عادی (هدر یا کوکی) است؛ اگر نبود،
+ * توکن کوتاه‌عمر فایل از کوئری پذیرفته می‌شود، چون تگ <img> هدر نمی‌فرستد.
+ * توکن نشست دیگر در کوئری پذیرفته نمی‌شود.
  */
 function fileAuth(req, res, next) {
-  const user = req.query.token ? userForToken(String(req.query.token)) : null;
-  if (!user) return requireApproved(req, res, next);
-  if (user.status !== 'approved') return fail(res, 403, 'دسترسی ندارید.');
-  req.user = user;
-  next();
+  const fileToken = req.query.t;
+  if (fileToken) {
+    const userId = userIdFromFileToken(String(fileToken));
+    const user = userId ? store.getUserById(userId) : null;
+    if (user && user.status === 'approved') {
+      req.user = user;
+      return next();
+    }
+    return fail(res, 403, 'نشانی فایل منقضی شده است.');
+  }
+  return requireApproved(req, res, next);
 }
 
 router.get('/files/:id', fileAuth, (req, res) => {
@@ -323,6 +412,8 @@ router.get('/files/:id', fileAuth, (req, res) => {
 
   res.type(row.file_mime || 'application/octet-stream');
   res.setHeader('Cache-Control', 'private, max-age=86400');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
   if (req.query.download) {
     res.setHeader(
       'Content-Disposition',
@@ -387,7 +478,15 @@ router.post('/conversations/:id/members', requireApproved, memberGuard, (req, re
   const conv = store.getConversationRow(req.conversationId);
   if (conv.type !== 'group') return fail(res, 400, 'فقط به گروه می‌توان عضو اضافه کرد.');
 
-  const target = store.getUserById(Number(req.body.userId));
+  // فقط سازنده‌ی گروه عضو اضافه می‌کند؛ وگرنه هر عضوی می‌توانست بدون اطلاع
+  // بقیه، شخص تازه‌ای را وارد گفتگوی خصوصی کند.
+  const me = store.membersOf(conv.id).find((m) => m.id === req.user.id);
+  if (me?.role !== 'owner') return fail(res, 403, 'فقط سازنده‌ی گروه می‌تواند عضو اضافه کند.');
+
+  // مثل ساخت گفتگوی دوطرفه، با نام کاربری دقیق — نه شناسه‌ی عددی.
+  const handle = clean(req.body.username).replace(/^@/, '');
+  if (!USERNAME_RE.test(handle)) return fail(res, 400, 'نام کاربری نامعتبر است.');
+  const target = store.getUserByUsername(handle);
   if (!target || target.status !== 'approved') return fail(res, 404, 'کاربر پیدا نشد.');
   if (store.isMember(conv.id, target.id)) return fail(res, 409, 'این کاربر از قبل عضو است.');
 

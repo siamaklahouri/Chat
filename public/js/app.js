@@ -23,6 +23,7 @@
     typingTimer: null,
     typingSentAt: 0,
     socket: null,
+    fileToken: null,
     reconnectDelay: 1000,
     filter: '',
   };
@@ -81,8 +82,11 @@
     el.classList.toggle('online', Boolean(online));
   }
 
-  /** نشانی فایل را با توکن می‌سازد، چون تگ <img> هدر Authorization نمی‌فرستد. */
-  const fileUrl = (url) => `${url}?token=${encodeURIComponent(state.token || '')}`;
+  /**
+   * نشانی فایل با توکن کوتاه‌عمرِ مخصوص فایل ساخته می‌شود — نه با توکن نشست،
+   * چون توکن نشست در لاگ و تاریخچه می‌نشیند و دسترسی کامل به حساب می‌دهد.
+   */
+  const fileUrl = (url) => `${url}?t=${encodeURIComponent(state.fileToken || '')}`;
 
   /* -------------------------------- API -------------------------------- */
 
@@ -136,6 +140,7 @@
         body: { username: form.get('username'), password: form.get('password') },
       });
       state.token = data.token;
+      state.fileToken = data.fileToken || null;
       localStorage.setItem(TOKEN_KEY, data.token);
       setAuthMessage('');
       await startApp(data.user);
@@ -163,6 +168,7 @@
         return;
       }
       state.token = data.token;
+      state.fileToken = data.fileToken || null;
       localStorage.setItem(TOKEN_KEY, data.token);
       setAuthMessage('');
       await startApp(data.user);
@@ -835,6 +841,13 @@
     socket.addEventListener('open', () => {
       state.reconnectDelay = 1000;
       $('connectionState').textContent = 'آنلاین';
+      // توکن فایل ۲۴ ساعته است؛ با هر اتصال تازه‌اش می‌کنیم تا عکس‌ها در
+      // نشست‌های طولانی از کار نیفتند.
+      api('/me')
+        .then((data) => {
+          if (data.fileToken) state.fileToken = data.fileToken;
+        })
+        .catch(() => {});
     });
 
     socket.addEventListener('message', (event) => {
@@ -1143,7 +1156,7 @@
                     try {
                       const { conversation } = await api('/conversations/direct', {
                         method: 'POST',
-                        body: { userId: user.id },
+                        body: { username: user.username },
                       });
                       upsertConversation(conversation);
                       closeModal();
@@ -1283,7 +1296,7 @@
 
       const newPassword = document.createElement('input');
       newPassword.type = 'password';
-      newPassword.placeholder = 'رمز تازه (حداقل ۶ نویسه)';
+      newPassword.placeholder = 'رمز تازه (حداقل ۸ نویسه)';
       newPassword.autocomplete = 'new-password';
 
       const changePassword = document.createElement('button');
@@ -1397,11 +1410,15 @@
           body.appendChild(row);
         }
 
-        const add = document.createElement('button');
-        add.className = 'btn';
-        add.textContent = '➕ افزودن عضو';
-        add.addEventListener('click', () => addMemberModal(conv));
-        body.appendChild(add);
+        // دکمه فقط برای سازنده‌ی گروه معنی دارد؛ سرور هم همین را الزام می‌کند.
+        const iAmOwner = conv.members.find((m) => m.id === state.me.id)?.role === 'owner';
+        if (iAmOwner) {
+          const add = document.createElement('button');
+          add.className = 'btn';
+          add.textContent = '➕ افزودن عضو';
+          add.addEventListener('click', () => addMemberModal(conv));
+          body.appendChild(add);
+        }
 
         const leave = document.createElement('button');
         leave.className = 'btn btn-danger';
@@ -1450,7 +1467,7 @@
                   try {
                     const data = await api(`/conversations/${conv.id}/members`, {
                       method: 'POST',
-                      body: { userId: user.id },
+                      body: { username: user.username },
                     });
                     upsertConversation(data.conversation);
                     closeModal();
@@ -1549,6 +1566,7 @@
     if (!state.token) return;
     try {
       const data = await api('/me');
+      state.fileToken = data.fileToken || null;
       if (data.user.status !== 'approved') {
         signOut(
           data.user.status === 'blocked'
