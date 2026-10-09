@@ -20,8 +20,8 @@ android {
         applicationId = "ir.chat9.messenger"
         minSdk = 24
         targetSdk = 34
-        versionCode = 2
-        versionName = "1.1"
+        versionCode = 3
+        versionName = "1.2"
 
         // نشانی پیش‌فرض سرور. کاربر می‌تواند در خود برنامه عوضش کند — مثلاً
         // برای وصل شدن به یک سرور محلی وقتی اینترنت در دسترس نیست.

@@ -607,15 +607,62 @@ html[dir='rtl'] .conversation.is-active { box-shadow: inset -3px 0 0 var(--accen
 .call-btn {
   width: 62px; height: 62px; border-radius: 50%;
   display: inline-grid; place-items: center;
-  border: none; color: #fff; cursor: pointer;
-  background: var(--bg-3);
+  border: 1px solid rgba(255, 255, 255, .16); color: #fff; cursor: pointer;
+  background: rgba(255, 255, 255, .12);
   transition: transform .12s ease, background .12s ease;
 }
 .call-btn:active { transform: scale(.94); }
-.call-accept { background: #16a34a; }
-.call-hangup { background: var(--danger); }
-.call-mute { background: rgba(255, 255, 255, .12); border: 1px solid rgba(255, 255, 255, .16); }
-.call-mute.is-on { background: #fbbf24; color: #1a1205; }
+.call-accept { background: #16a34a; border-color: #16a34a; }
+.call-hangup { background: var(--danger); border-color: var(--danger); }
+.call-mute.is-on, .call-camera.is-on { background: #fbbf24; border-color: #fbbf24; color: #1a1205; }
+
+/* --- تماس تصویری --- */
+
+/* تصویر طرف مقابل تمام‌صفحه؛ پیش‌نمایش خودم گوشه‌ی بالا. */
+.call-remote {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover; background: #000;
+}
+.call-local {
+  position: absolute; top: calc(14px + var(--safe-top)); inset-inline-end: 14px;
+  width: 104px; height: 148px; z-index: 2;
+  object-fit: cover; border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, .22);
+  background: #11161f;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .5);
+  /* دوربین جلو را آینه‌ای نشان می‌دهیم، همان‌طور که همه انتظار دارند. */
+  transform: scaleX(-1);
+}
+.call-local.is-off { opacity: .25; }
+
+/* وقتی تصویری هست، کارت وسط کنار می‌رود تا جلوی تصویر را نگیرد. */
+.call-overlay.has-video::after {
+  content: ''; position: absolute; inset-inline: 0; bottom: 0; height: 42%;
+  background: linear-gradient(to top, rgba(0, 0, 0, .72), transparent);
+  pointer-events: none; z-index: 1;
+}
+.call-overlay.has-video .call-card {
+  position: absolute; inset-inline-start: 0; inset-inline-end: 0;
+  bottom: calc(26px + var(--safe-bottom));
+  z-index: 2; gap: 8px;
+}
+.call-overlay.has-video .call-avatar { display: none; }
+.call-overlay.has-video .call-name,
+.call-overlay.has-video .call-state {
+  text-shadow: 0 1px 6px rgba(0, 0, 0, .85);
+}
+/* روی تصویرِ روشن، خاکستریِ معمولِ زمان خوانده نمی‌شود. */
+.call-overlay.has-video .call-state { color: rgba(255, 255, 255, .92); font-size: 15px; }
+.call-overlay.has-video .call-actions { margin-top: 10px; }
+
+
+/* روی موبایلِ باریک، دکمه‌ها نباید از صفحه بیرون بزنند. */
+@media (max-width: 420px) {
+  .call-actions { gap: 12px; }
+  .call-btn { width: 56px; height: 56px; }
+  .call-local { width: 88px; height: 124px; }
+}
 
 @media (prefers-reduced-motion: no-preference) {
   .call-overlay:not(.is-hidden) .call-avatar { animation: call-pulse 1.8s ease-in-out infinite; }

@@ -810,6 +810,25 @@ test('تماس صوتی: زنگ، پاسخ، سیگنالینگ و ثبت رکو
   assert.ok(message.durationMs >= 0);
 });
 
+test('تماس تصویری: نوع تماس به طرف مقابل و به رکورد گفتگو می‌رسد', async () => {
+  const [adminSocket, saraSocket] = context.callSockets;
+
+  const incoming = nextEvent(saraSocket, 'call:incoming');
+  const ringing = nextEvent(adminSocket, 'call:ringing');
+  adminSocket.send(
+    JSON.stringify({ type: 'call:invite', conversationId: context.conversationId, video: true })
+  );
+
+  const invite = await incoming;
+  assert.equal(invite.video, true, 'گیرنده باید بداند تماس تصویری است');
+  assert.equal((await ringing).video, true);
+
+  // رد کردن تماس تصویری باید رکوردِ «تصویری» بسازد، نه صوتی
+  const record = nextEvent(adminSocket, 'message:new');
+  saraSocket.send(JSON.stringify({ type: 'call:decline', callId: invite.callId }));
+  assert.equal((await record).message.body, 'video-declined');
+});
+
 test('تماس صوتی: فقط طرف‌های همان تماس می‌توانند سیگنال بفرستند', async () => {
   const [adminSocket, saraSocket] = context.callSockets;
 

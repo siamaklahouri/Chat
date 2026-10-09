@@ -66,8 +66,9 @@ async function login(page, username) {
     ],
   });
 
-  const ctxA = await browser.newContext({ permissions: ['microphone'], baseURL: BASE });
-  const ctxB = await browser.newContext({ permissions: ['microphone'], baseURL: BASE });
+  const perms = ['microphone', 'camera'];
+  const ctxA = await browser.newContext({ permissions: perms, baseURL: BASE });
+  const ctxB = await browser.newContext({ permissions: perms, baseURL: BASE });
   const a = await ctxA.newPage();
   const b = await ctxB.newPage();
   const errors = [];
@@ -159,6 +160,59 @@ async function login(page, username) {
   await a.waitForSelector('#callOverlay', { state: 'hidden', timeout: 8000 });
   const records = await a.$$eval('.system-message.call-record', (els) => els.map((e) => e.textContent.trim()));
   log('رکوردها پس از رد تماس:', JSON.stringify(records));
+
+  /* ---------------------------- تماس تصویری ---------------------------- */
+
+  await a.waitForSelector('#videoCallBtn:not(.is-hidden)');
+  await a.click('#videoCallBtn');
+  await b.waitForSelector('#callAccept:not(.is-hidden)', { timeout: 8000 });
+  log('زنگ تصویری روی دستگاه گیرنده:', await b.textContent('#callState'));
+  await b.click('#callAccept');
+
+  await Promise.all([connected(a), connected(b)]);
+  log('تماس تصویری برقرار شد — تایمر:', await a.textContent('#callState'));
+
+  // تصویر واقعی رد و بدل می‌شود؟ ابعاد ویدیوی دریافتی را از خود المان می‌پرسیم.
+  const videoLive = (page) =>
+    page.waitForFunction(
+      () => {
+        const v = document.getElementById('remoteVideo');
+        return v && !v.classList.contains('is-hidden') && v.videoWidth > 0
+          ? { w: v.videoWidth, h: v.videoHeight }
+          : false;
+      },
+      null,
+      { timeout: 20000 }
+    ).then((handle) => handle.jsonValue());
+
+  log('تصویر دریافتی سمت مدیر:', JSON.stringify(await videoLive(a)));
+  log('تصویر دریافتی سمت سارا:', JSON.stringify(await videoLive(b)));
+
+  const localShown = await a.evaluate(
+    () => !document.getElementById('localVideo').classList.contains('is-hidden')
+  );
+  log('پیش‌نمایش دوربین خودم دیده می‌شود؟', localShown);
+
+  // خاموش و روشن کردن دوربین
+  await a.click('#callCamera');
+  log(
+    'دوربین خاموش شد؟',
+    await a.evaluate(() => document.getElementById('callCamera').classList.contains('is-on'))
+  );
+  await a.click('#callCamera');
+
+  await a.screenshot({ path: '/tmp/call-video.png' });
+  await new Promise((r) => setTimeout(r, 1500));
+  await a.click('#callHangup');
+  await b.waitForSelector('#callOverlay', { state: 'hidden', timeout: 8000 });
+
+  await a.waitForFunction(
+    () => [...document.querySelectorAll('.system-message.call-record')].some((e) => e.textContent.includes('تصویری')),
+    null,
+    { timeout: 8000 }
+  );
+  const all = await a.$$eval('.system-message.call-record', (els) => els.map((e) => e.textContent.trim()));
+  log('همه‌ی رکوردها:', JSON.stringify(all));
 
   log('— پایان —');
 

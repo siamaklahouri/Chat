@@ -60,6 +60,7 @@ for range in '127.0.0.0-127.255.255.255' '10.0.0.0-10.255.255.255' '172.16.0.0-1
   grep -q "denied-peer-ip=$range" "$SB/etc/turnserver.conf" || fail "بازه‌ی $range مسدود نشده"
 done
 grep -q '^use-auth-secret' "$SB/etc/turnserver.conf" || fail "use-auth-secret ست نشده"
+grep -qE '^max-bps=[0-9]+$' "$SB/etc/turnserver.conf" || fail "سقف پهنای باند ست نشده"
 ok "سخت‌سازی: بازه‌های خصوصی مسدود و اعتبارنامه موقت است"
 
 [[ "$(stat -c '%a' "$SB/etc/9chat.env")" == 600 ]] || fail "فایل محیطی مجوز ۶۰۰ ندارد"

@@ -50,7 +50,7 @@ const callsEnabled = () => Boolean(TURN_HOST);
  */
 const RING_TIMEOUT_MS = 45_000;
 
-/** callId -> { callerId, calleeId, conversationId, answered, startedAt, timer } */
+/** callId -> { callerId, calleeId, conversationId, video, answered, startedAt, timer } */
 const activeCalls = new Map();
 /** userId -> callId (هر کاربر هم‌زمان فقط یک تماس) */
 const userCall = new Map();
@@ -69,7 +69,7 @@ function peerInCall(call, userId) {
   return null;
 }
 
-function createCall({ callerId, calleeId, conversationId, onTimeout }) {
+function createCall({ callerId, calleeId, conversationId, video = false, onTimeout }) {
   const callId = newCallId();
   const timer = setTimeout(() => onTimeout(callId), RING_TIMEOUT_MS);
   timer.unref?.();
@@ -78,6 +78,7 @@ function createCall({ callerId, calleeId, conversationId, onTimeout }) {
     callerId,
     calleeId,
     conversationId,
+    video,
     answered: false,
     createdAt: Date.now(),
     startedAt: null,

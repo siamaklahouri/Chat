@@ -237,7 +237,7 @@
     if (message.kind === 'system') return message.body;
     if (message.kind === 'image') return `${prefix}🖼 عکس${message.body ? ` — ${message.body}` : ''}`;
     if (message.kind === 'voice') return `${prefix}🎤 پیام صوتی`;
-    if (message.kind === 'call') return `📞 ${callRecordText(message)}`;
+    if (message.kind === 'call') return `${message.body.startsWith('video-') ? '📹' : '📞'} ${callRecordText(message)}`;
     return prefix + message.body;
   }
 
@@ -321,6 +321,7 @@
     // تماس فقط در گفتگوی دونفره، و فقط اگر سرور TURN تنظیم شده باشد.
     const callable = state.callEnabled && conv.type === 'direct' && Boolean(conv.peer);
     $('callBtn').classList.toggle('is-hidden', !callable);
+    $('videoCallBtn').classList.toggle('is-hidden', !callable);
   }
 
   function senderName(senderId) {
@@ -466,9 +467,12 @@
   /** متن رکورد تماس در گفتگو؛ فرستنده‌ی رکورد همیشه تماس‌گیرنده است. */
   function callRecordText(message) {
     const mine = message.senderId === state.me?.id;
-    if (message.body === 'ended') return `تماس صوتی · ${clockText(message.durationMs)}`;
-    if (message.body === 'declined') return mine ? 'تماس رد شد' : 'تماس را رد کردید';
-    return mine ? 'تماس بی‌پاسخ' : 'تماس بی‌پاسخ';
+    const video = message.body.startsWith('video-');
+    const status = video ? message.body.slice(6) : message.body;
+    const what = video ? 'تماس تصویری' : 'تماس صوتی';
+    if (status === 'ended') return `${what} · ${clockText(message.durationMs)}`;
+    if (status === 'declined') return mine ? `${what} رد شد` : `${what} را رد کردید`;
+    return `${what} بی‌پاسخ`;
   }
 
   /** پخش‌کننده‌ی پیام صوتی: دکمه‌ی پخش، نوار پیشرفت و زمان. */
@@ -606,7 +610,9 @@
         system.className = `system-message${message.kind === 'call' ? ' call-record' : ''}`;
         system.innerHTML = '<span></span>';
         system.firstChild.textContent =
-          message.kind === 'call' ? `📞 ${callRecordText(message)}` : message.body;
+          message.kind === 'call'
+            ? `${message.body.startsWith('video-') ? '📹' : '📞'} ${callRecordText(message)}`
+            : message.body;
         list.appendChild(system);
         previous = null;
         continue;
@@ -1302,7 +1308,7 @@
         : message.kind === 'voice'
           ? '🎤 پیام صوتی فرستاد'
           : message.kind === 'call'
-            ? `📞 ${callRecordText(message)}`
+            ? callRecordText(message)
             : message.body.slice(0, 120);
 
     if (window.AndroidBridge?.notify) {
@@ -1440,7 +1446,10 @@
     $('callAccept').classList.toggle('is-hidden', !incoming);
     $('callMute').classList.toggle('is-hidden', incoming);
     $('callMute').classList.remove('is-on');
-    $('callOverlay').classList.remove('is-hidden');
+    for (const id of ['callCamera', 'callFlip', 'remoteVideo', 'localVideo']) {
+      $(id).classList.add('is-hidden');
+    }
+    $('callOverlay').classList.remove('is-hidden', 'has-video');
     document.body.classList.add('in-call');
   }
 
@@ -1480,8 +1489,9 @@
         }
       }
     }
-    const audio = $('remoteAudio');
-    audio.srcObject = null;
+    $('remoteAudio').srcObject = null;
+    $('remoteVideo').srcObject = null;
+    $('localVideo').srcObject = null;
     hideCallOverlay();
     if (message) toast(message);
   }
@@ -1498,6 +1508,62 @@
     }
   }
 
+  /**
+   * میکروفون (و در تماس تصویری، دوربین) را می‌گیرد. اگر دوربین نبود یا اجازه
+   * داده نشد، تماس را نمی‌کُشیم: با صدای تنها ادامه می‌دهیم و طرف مقابل
+   * تصویر ما را نمی‌بیند — بهتر از قطع شدن تماس است.
+   */
+  async function captureMedia(call) {
+    const audio = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+    if (!call.video) return navigator.mediaDevices.getUserMedia({ audio, video: false });
+
+    const video = {
+      facingMode: call.facing || 'user',
+      // رزولوشن را عمداً متوسط می‌گیریم: تصویرِ رله‌شده از سرور رد می‌شود و
+      // پهنای باند سرور و اینترنت موبایل هر دو محدودند.
+      width: { ideal: 640 },
+      height: { ideal: 480 },
+      frameRate: { ideal: 24, max: 30 },
+    };
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio, video });
+      call.hasMultipleCameras = await countCameras() > 1;
+      $('localVideo').srcObject = stream;
+      $('localVideo').classList.remove('is-hidden');
+      $('callOverlay').classList.add('has-video');
+      return stream;
+    } catch (error) {
+      console.warn('[call] دوربین در دسترس نیست؛ تماس صوتی ادامه می‌یابد:', error.name);
+      toast('دوربین در دسترس نیست؛ تماس فقط صوتی برقرار می‌شود.', true);
+      call.cameraDenied = true;
+      return navigator.mediaDevices.getUserMedia({ audio, video: false });
+    }
+  }
+
+  async function countCameras() {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      return devices.filter((d) => d.kind === 'videoinput').length;
+    } catch {
+      return 0;
+    }
+  }
+
+  /** سقف نرخ بیت تصویر، تا یک تماس همه‌ی پهنای باند سرور را نگیرد. */
+  async function capVideoBitrate(pc) {
+    const sender = pc.getSenders().find((s) => s.track?.kind === 'video');
+    if (!sender?.getParameters) return;
+    try {
+      const params = sender.getParameters();
+      params.encodings = params.encodings?.length ? params.encodings : [{}];
+      params.encodings[0].maxBitrate = 600_000; // ۶۰۰ کیلوبیت بر ثانیه
+      await sender.setParameters(params);
+    } catch {
+      /* بعضی مرورگرها اجازه نمی‌دهند؛ مهم نیست */
+    }
+  }
+
   async function createPeer() {
     const call = state.call;
     const iceServers = await callIceServers();
@@ -1506,15 +1572,13 @@
     const pc = new RTCPeerConnection({ iceServers });
     call.pc = pc;
 
-    call.stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-      video: false,
-    });
+    call.stream = await captureMedia(call);
     if (!state.call || state.call !== call) {
       call.stream.getTracks().forEach((t) => t.stop());
       return null;
     }
     for (const track of call.stream.getTracks()) pc.addTrack(track, call.stream);
+    if (call.video) await capVideoBitrate(pc);
 
     pc.onicecandidate = (event) => {
       if (event.candidate) {
@@ -1523,8 +1587,16 @@
     };
 
     pc.ontrack = (event) => {
-      $('remoteAudio').srcObject = event.streams[0];
-      $('remoteAudio').play?.().catch(() => {});
+      const [stream] = event.streams;
+      if (event.track.kind === 'video') {
+        $('remoteVideo').srcObject = stream;
+        $('remoteVideo').classList.remove('is-hidden');
+        $('callOverlay').classList.add('has-video');
+        $('remoteVideo').play?.().catch(() => {});
+      } else {
+        $('remoteAudio').srcObject = stream;
+        $('remoteAudio').play?.().catch(() => {});
+      }
     };
 
     pc.onconnectionstatechange = () => {
@@ -1533,6 +1605,10 @@
         ring.stop();
         $('callMute').classList.remove('is-hidden');
         $('callAccept').classList.add('is-hidden');
+        if (call.video) {
+          $('callCamera').classList.remove('is-hidden');
+          if (call.hasMultipleCameras) $('callFlip').classList.remove('is-hidden');
+        }
         startCallTimer();
       } else if (pc.connectionState === 'failed') {
         endCall('failed');
@@ -1586,17 +1662,19 @@
 
   /* ----------------------------- کنش‌های کاربر ---------------------------- */
 
-  function startCall() {
+  function startCall(video = false) {
     const conv = state.conversations.get(state.activeId);
     if (!conv || conv.type !== 'direct' || !conv.peer) return;
     if (state.call) return toast('همین حالا در یک تماس هستید.', true);
     if (!window.RTCPeerConnection || !navigator.mediaDevices?.getUserMedia) {
-      return toast('مرورگر شما تماس صوتی را پشتیبانی نمی‌کند.', true);
+      return toast('مرورگر شما تماس را پشتیبانی نمی‌کند.', true);
     }
 
     state.call = {
       id: null,
       role: 'caller',
+      video,
+      facing: 'user',
       conversationId: conv.id,
       peerName: conv.title,
       peerColor: conv.avatarColor,
@@ -1607,7 +1685,7 @@
     };
     showCallOverlay({ name: conv.title, color: conv.avatarColor, incoming: false });
     setCallState('در حال زنگ زدن…');
-    if (!sendWs({ type: 'call:invite', conversationId: conv.id })) {
+    if (!sendWs({ type: 'call:invite', conversationId: conv.id, video })) {
       teardownCall('ارتباط با سرور برقرار نیست.');
     }
   }
@@ -1656,6 +1734,56 @@
     toast(track.enabled ? 'میکروفون روشن شد.' : 'میکروفون بی‌صدا شد.');
   }
 
+  function toggleCamera() {
+    const track = state.call?.stream?.getVideoTracks()[0];
+    if (!track) return;
+    track.enabled = !track.enabled;
+    $('callCamera').classList.toggle('is-on', !track.enabled);
+    $('localVideo').classList.toggle('is-off', !track.enabled);
+    $('callCamera').setAttribute(
+      'aria-label',
+      track.enabled ? 'خاموش کردن دوربین' : 'روشن کردن دوربین'
+    );
+  }
+
+  /**
+   * تعویض دوربین جلو و عقب. به‌جای ساختن اتصال تازه، فقط فرستنده‌ی تصویر را
+   * با دوربین دیگر عوض می‌کنیم تا تماس قطع نشود.
+   */
+  async function flipCamera() {
+    const call = state.call;
+    if (!call?.pc || !call.video) return;
+    const next = call.facing === 'user' ? 'environment' : 'user';
+    let fresh;
+    try {
+      fresh = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { facingMode: { exact: next } },
+      });
+    } catch {
+      toast('دوربین دیگری پیدا نشد.', true);
+      return;
+    }
+
+    const track = fresh.getVideoTracks()[0];
+    const sender = call.pc.getSenders().find((s) => s.track?.kind === 'video');
+    if (!sender || !track) {
+      fresh.getTracks().forEach((t) => t.stop());
+      return;
+    }
+
+    await sender.replaceTrack(track).catch(() => {});
+    const old = call.stream.getVideoTracks()[0];
+    if (old) {
+      call.stream.removeTrack(old);
+      old.stop();
+    }
+    call.stream.addTrack(track);
+    call.facing = next;
+    $('localVideo').srcObject = call.stream;
+    await capVideoBitrate(call.pc);
+  }
+
   /* ------------------------- رویدادهای رسیده از سرور ----------------------- */
 
   function onCallRinging(event) {
@@ -1673,6 +1801,8 @@
     state.call = {
       id: event.callId,
       role: 'callee',
+      video: Boolean(event.video),
+      facing: 'user',
       conversationId: event.conversationId,
       peerName: event.from?.displayName || 'کاربر',
       peerColor: event.from?.avatarColor,
@@ -1686,12 +1816,12 @@
       color: state.call.peerColor,
       incoming: true,
     });
-    setCallState('تماس صوتی ورودی…');
+    setCallState(state.call.video ? 'تماس تصویری ورودی…' : 'تماس صوتی ورودی…');
     ring.start(true);
     if (document.visibilityState !== 'visible') {
       notify({ id: event.conversationId, title: state.call.peerName }, {
         kind: 'text',
-        body: 'تماس صوتی…',
+        body: state.call.video ? 'تماس تصویری…' : 'تماس صوتی…',
       });
     }
   }
@@ -1713,7 +1843,10 @@
     }
   }
 
-  $('callBtn').addEventListener('click', startCall);
+  $('callBtn').addEventListener('click', () => startCall(false));
+  $('videoCallBtn').addEventListener('click', () => startCall(true));
+  $('callCamera').addEventListener('click', toggleCamera);
+  $('callFlip').addEventListener('click', flipCamera);
   $('callAccept').addEventListener('click', acceptCall);
   $('callMute').addEventListener('click', toggleMute);
   $('callHangup').addEventListener('click', () => endCall());

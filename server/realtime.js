@@ -115,14 +115,17 @@ const inviteLimiter = createLimiter({ windowMs: 60_000, max: 20 });
 const callError = (socket, reason) =>
   socket.send(JSON.stringify({ type: 'call:error', reason }));
 
-/** رکورد تماس را در گفتگو ثبت و برای هر دو طرف می‌فرستد. */
+/**
+ * رکورد تماس را در گفتگو ثبت و برای هر دو طرف می‌فرستد. نوع تماس در خود متن
+ * می‌آید («video-ended») تا ستون تازه‌ای به جدول پیام‌ها اضافه نشود.
+ */
 function recordCall(call, status, durationMs = null) {
   try {
     const message = store.createMessage({
       conversationId: call.conversationId,
       senderId: call.callerId,
       kind: 'call',
-      body: status,
+      body: call.video ? `video-${status}` : status,
       file: durationMs == null ? null : { durationMs },
     });
     hub.sendToConversation(call.conversationId, { type: 'message:new', message });
@@ -167,10 +170,12 @@ function handleCall(msg, user, socket) {
     if (calls.isBusy(peerId)) return callError(socket, 'busy');
     if (!hub.isOnline(peerId)) return callError(socket, 'offline');
 
+    const video = Boolean(msg.video);
     const callId = calls.createCall({
       callerId: user.id,
       calleeId: peerId,
       conversationId: conv.id,
+      video,
       onTimeout: (id) => finishCall(id, 'timeout'),
     });
     hub.sendToUser(user.id, {
@@ -178,12 +183,14 @@ function handleCall(msg, user, socket) {
       callId,
       conversationId: conv.id,
       peerId,
+      video,
       timeoutMs: calls.RING_TIMEOUT_MS,
     });
     hub.sendToUser(peerId, {
       type: 'call:incoming',
       callId,
       conversationId: conv.id,
+      video,
       from: store.publicUser(store.getUserById(user.id)),
       timeoutMs: calls.RING_TIMEOUT_MS,
     });

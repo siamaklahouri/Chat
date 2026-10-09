@@ -23,6 +23,9 @@ COTURN_DEFAULT="${COTURN_DEFAULT:-/etc/default/coturn}"
 UNIT_FILE="${UNIT_FILE:-/etc/systemd/system/$SERVICE_NAME.service}"
 MIN_PORT="${MIN_PORT:-49160}"
 MAX_PORT="${MAX_PORT:-49260}"
+# سقف پهنای باند هر تماس، بر حسب بایت بر ثانیه (نه بیت — نام گزینه گمراه‌کننده
+# است). ۲۵۰ کیلوبایت ≈ ۲ مگابیت، برای تماس تصویری ۴۸۰p با جای کافی.
+MAX_BPS="${MAX_BPS:-250000}"
 
 info() { printf '\n\033[1;34m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[!]\033[0m %s\n' "$*"; }
@@ -122,7 +125,7 @@ max-port=$MAX_PORT
 # سهمیه‌ها تا یک کاربر نتواند پهنای باند سرور را ببلعد.
 user-quota=12
 total-quota=100
-max-bps=128000
+max-bps=$MAX_BPS
 
 # --- سخت‌سازی: TURN نباید پلی به شبکه‌ی داخلی همین سرور شود ---
 # بدون این خطوط، هر کسی با یک اعتبارنامه‌ی معتبر می‌توانست از TURN برای رسیدن
@@ -212,6 +215,7 @@ cat <<DONE
 
    سرور TURN:   $DOMAIN:3478  (UDP و TCP)
    بازه‌ی رله:   $MIN_PORT-$MAX_PORT/udp
+   سقف هر تماس: $MAX_BPS بایت بر ثانیه
    تنظیمات:     $TURN_CONF
    راز مشترک:   $ENV_FILE  (فقط root می‌خواندش)
 
