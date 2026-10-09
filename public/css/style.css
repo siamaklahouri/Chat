@@ -12,6 +12,7 @@
 }
 
 :root {
+  color-scheme: dark;
   --bg: #0b1016;
   --bg-2: #121a24;
   --bg-3: #1a2431;
@@ -22,14 +23,82 @@
   --accent-2: #3d2fe6;
   --bubble-me: #4033cc;
   --bubble-them: #1b2634;
+  --bubble-line: transparent;
+  --bubble-shadow: none;
   --danger: #ef4444;
+  --danger-soft: #fca5a5;
   --ok: #2ee6a6;
+  --ok-soft: #86efac;
+  --warn: #fbbf24;
+  --author: #93c5fd;
   --brand-dot: #2ee6a6;
+  /* «wash» لایه‌ی نیم‌شفافی است که روی حباب می‌نشیند؛ در تم تیره روشن و در تم
+     روشن تیره است، تا هم روی حباب تیره و هم روی حباب سفید خوانا بماند. */
+  --wash: rgba(255, 255, 255, .13);
+  --wash-strong: rgba(255, 255, 255, .22);
+  --auth-glow: #1b1840;
+  --list-glow: rgba(75, 59, 255, .09);
+  --shadow: rgba(0, 0, 0, .45);
   --radius: 16px;
   --header-h: 60px;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   font-family: system-ui, 'Segoe UI', Vazirmatn, Tahoma, sans-serif;
+}
+
+/* تم روشن. دو جا تکرار شده چون CSS نمی‌تواند «سلیقه‌ی سیستم» و «انتخاب دستی»
+   را در یک قاعده جمع کند: اولی وقتی سیستم روشن است و کاربر تیره را دستی
+   انتخاب نکرده، دومی وقتی کاربر خودش روشن را انتخاب کرده. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) {
+    color-scheme: light;
+    --bg: #f2f5fa;
+    --bg-2: #ffffff;
+    --bg-3: #eaeff7;
+    --line: #dce3ee;
+    --text: #0f172a;
+    --muted: #5b6b80;
+    --bubble-me: #4b3bff;
+    --bubble-them: #ffffff;
+    --bubble-line: #e3e9f3;
+    --bubble-shadow: 0 1px 2px rgba(15, 23, 42, .07);
+    --danger-soft: #b91c1c;
+    --ok: #0f9d6f;
+    --ok-soft: #047857;
+    --warn: #b45309;
+    --author: #1d4ed8;
+    --brand-dot: #0f9d6f;
+    --wash: rgba(15, 23, 42, .06);
+    --wash-strong: rgba(15, 23, 42, .13);
+    --auth-glow: #dfe3ff;
+    --list-glow: rgba(75, 59, 255, .06);
+    --shadow: rgba(15, 23, 42, .12);
+  }
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg: #f2f5fa;
+  --bg-2: #ffffff;
+  --bg-3: #eaeff7;
+  --line: #dce3ee;
+  --text: #0f172a;
+  --muted: #5b6b80;
+  --bubble-me: #4b3bff;
+  --bubble-them: #ffffff;
+  --bubble-line: #e3e9f3;
+  --bubble-shadow: 0 1px 2px rgba(15, 23, 42, .07);
+  --danger-soft: #b91c1c;
+  --ok: #0f9d6f;
+  --ok-soft: #047857;
+  --warn: #b45309;
+  --author: #1d4ed8;
+  --brand-dot: #0f9d6f;
+  --wash: rgba(15, 23, 42, .06);
+  --wash-strong: rgba(15, 23, 42, .13);
+  --auth-glow: #dfe3ff;
+  --list-glow: rgba(75, 59, 255, .06);
+  --shadow: rgba(15, 23, 42, .12);
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -57,7 +126,7 @@ button { cursor: pointer; }
   display: grid;
   place-items: center;
   padding: 20px;
-  background: radial-gradient(1200px 600px at 50% -10%, #1b1840 0%, var(--bg) 60%);
+  background: radial-gradient(1200px 600px at 50% -10%, var(--auth-glow) 0%, var(--bg) 60%);
 }
 
 .auth-card {
@@ -66,7 +135,7 @@ button { cursor: pointer; }
   border: 1px solid var(--line);
   border-radius: 22px;
   padding: 26px 22px calc(22px + var(--safe-bottom));
-  box-shadow: 0 24px 60px rgba(0, 0, 0, .45);
+  box-shadow: 0 24px 60px var(--shadow);
 }
 
 .brand { text-align: center; margin-bottom: 18px; }
@@ -78,11 +147,11 @@ button { cursor: pointer; }
   direction: ltr;
   display: flex; align-items: center; justify-content: center; gap: 7px;
 }
-.brand-mark { width: 40px; height: 48px; color: #fff; flex: none; }
+.brand-mark { width: 40px; height: 48px; color: var(--accent); flex: none; }
 .brand-word {
   font-family: 'Outfit', system-ui, sans-serif;
   font-weight: 600; font-size: 44px; line-height: 1;
-  letter-spacing: -.03em; color: #fff; margin-top: 5px;
+  letter-spacing: -.03em; color: var(--text); margin-top: 5px;
 }
 
 /* همان نشان، کوچک، برای سربرگ پنل مدیریت */
@@ -112,18 +181,24 @@ button { cursor: pointer; }
 .field input:focus, .search-row input:focus, .modal-body input:focus { border-color: var(--accent); }
 
 .btn {
-  border: 0; border-radius: 12px; padding: 12px 16px;
+  /* حاشیه‌ی نازک، وگرنه در تم روشن دکمه از زمینه‌ی کارت جدا دیده نمی‌شود. */
+  border: 1px solid var(--line); border-radius: 12px; padding: 11px 16px;
   font-weight: 700; background: var(--bg-3); color: var(--text);
+  transition: background .12s ease, border-color .12s ease;
 }
-.btn-primary { background: var(--accent); color: #fff; }
+@media (hover: hover) {
+  .btn:hover { border-color: var(--muted); }
+  .btn-primary:hover { background: var(--accent-2); border-color: var(--accent-2); }
+}
+.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .btn-primary:active { background: var(--accent-2); }
-.btn-danger { background: rgba(239, 68, 68, .15); color: #fca5a5; }
+.btn-danger { background: rgba(239, 68, 68, .14); border-color: rgba(239, 68, 68, .35); color: var(--danger-soft); }
 .btn:disabled { opacity: .6; }
 .hint { color: var(--muted); font-size: 12px; text-align: center; margin: 0; }
 
 .auth-message { min-height: 20px; margin: 14px 0 0; text-align: center; font-size: 13px; }
-.auth-message.error { color: #fca5a5; }
-.auth-message.ok { color: #86efac; }
+.auth-message.error { color: var(--danger-soft); }
+.auth-message.ok { color: var(--ok-soft); }
 
 /* -------------------------------- چیدمان ------------------------------- */
 
@@ -169,18 +244,44 @@ button { cursor: pointer; }
   display: inline-grid; place-items: center; flex: none;
   text-decoration: none;
 }
-.icon-btn:active { background: var(--bg-3); color: var(--text); }
+@media (hover: hover) {
+  .icon-btn:hover { background: var(--bg-3); color: var(--text); }
+  .conversation:hover { background: var(--bg-3); }
+}
+.icon-btn:active { background: var(--line); color: var(--text); }
+
+/* فقط برای کسی که با کیبورد حرکت می‌کند، نه با کلیک موشی. */
+:where(button, a, input, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 10px;
+}
+
+/* دکمه‌ی تم: هر بار فقط آیکون مقصد دیده می‌شود. */
+.theme-icon-light { display: none; }
+:root[data-theme='light'] .theme-icon-light { display: block; }
+:root[data-theme='light'] .theme-icon-dark { display: none; }
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) .theme-icon-light { display: block; }
+  :root:not([data-theme='dark']) .theme-icon-dark { display: none; }
+}
 
 .search-row { padding: 10px 12px; }
 
 .conversation-list { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 
 .conversation {
-  display: flex; gap: 10px; align-items: center;
-  padding: 10px 12px; border: 0; width: 100%;
+  display: flex; gap: 11px; align-items: center;
+  padding: 11px 12px; border: 0; width: 100%;
   background: transparent; text-align: start; color: inherit;
+  border-radius: 14px;
+  transition: background .12s ease;
 }
+.conversation-list { padding: 4px 6px 10px; }
+
 .conversation:active, .conversation.is-active { background: var(--bg-3); }
+.conversation.is-active { box-shadow: inset 3px 0 0 var(--accent); }
+html[dir='rtl'] .conversation.is-active { box-shadow: inset -3px 0 0 var(--accent); }
 .conversation-main { flex: 1; min-width: 0; }
 .conversation-top { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
 .conversation-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -199,16 +300,21 @@ button { cursor: pointer; }
 .chat-panel { display: flex; min-width: 0; min-height: 0; }
 .chat-view { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
 .empty-state {
-  flex: 1; display: grid; place-content: center; text-align: center;
-  color: var(--muted); gap: 8px;
+  flex: 1; display: grid; place-content: center; justify-items: center;
+  text-align: center; color: var(--muted); gap: 6px; padding: 24px;
 }
-.empty-icon { font-size: 40px; }
+.empty-state p { margin: 0; max-width: 34ch; }
+.empty-mark { color: var(--line); margin-bottom: 6px; }
+.empty-title { color: var(--text); font-weight: 600; font-size: 16px; }
 
 .chat-header {
   display: flex; align-items: center; gap: 10px;
   padding: calc(8px + var(--safe-top)) 12px 8px;
   border-bottom: 1px solid var(--line); background: var(--bg-2);
+  /* سربرگ نباید با اسکرول پیام‌ها برود. */
+  position: relative; z-index: 2;
 }
+.chat-header .avatar { width: 38px; height: 38px; font-size: 14px; }
 .chat-title { flex: 1; min-width: 0; line-height: 1.3; }
 .chat-title strong { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
@@ -220,7 +326,7 @@ button { cursor: pointer; }
   padding: 14px 12px 6px; scroll-behavior: smooth;
   display: flex; flex-direction: column; gap: 4px;
   background:
-    radial-gradient(900px 400px at 100% 0%, rgba(75, 59, 255, .09), transparent 60%),
+    radial-gradient(900px 400px at 100% 0%, var(--list-glow), transparent 60%),
     var(--bg);
 }
 
@@ -236,7 +342,12 @@ button { cursor: pointer; }
   border-radius: 999px; padding: 4px 12px; font-size: 12px;
 }
 
-.message-row { display: flex; max-width: 100%; }
+.message-row { display: flex; max-width: 100%; align-items: flex-end; gap: 7px; }
+
+/* در گروه، آواتار فرستنده کنار نخستین پیام هر دسته می‌نشیند؛ برای پیام‌های
+   بعدیِ همان فرستنده جایش خالی می‌ماند تا حباب‌ها هم‌تراز بمانند. */
+.row-avatar { width: 28px; height: 28px; font-size: 12px; margin-bottom: 2px; }
+.row-avatar-gap { width: 28px; flex: none; }
 /* در چیدمان راست‌چین، پیام‌های خودم سمت چپ و پیام‌های طرف مقابل سمت راست قرار می‌گیرند. */
 .message-row.mine { justify-content: flex-end; }
 .message-row.theirs { justify-content: flex-start; }
@@ -249,8 +360,22 @@ button { cursor: pointer; }
   position: relative;
   word-wrap: break-word;
   overflow-wrap: anywhere;
+  border: 1px solid var(--bubble-line);
+  box-shadow: var(--bubble-shadow);
+  /* رنگ‌های روی حباب از این دو توکن می‌آیند تا در هر دو تم و هر دو سمت خوانا
+     بمانند: حباب خودم همیشه تیره‌ی سرمه‌ای با متن سفید است، حباب طرف مقابل
+     با تم عوض می‌شود. */
+  --on-bubble-soft: var(--muted);
+  --bw: var(--wash);
+  --bw2: var(--wash-strong);
 }
-.message-row.mine .bubble { background: var(--bubble-me); border-end-end-radius: 6px; }
+.message-row.mine .bubble {
+  background: var(--bubble-me); border-end-end-radius: 6px;
+  border-color: transparent; color: #fff;
+  --on-bubble-soft: rgba(255, 255, 255, .72);
+  --bw: rgba(255, 255, 255, .16);
+  --bw2: rgba(255, 255, 255, .26);
+}
 .message-row.theirs .bubble { border-end-start-radius: 6px; }
 .bubble.grouped { margin-top: 2px; }
 
@@ -259,31 +384,30 @@ button { cursor: pointer; }
 .bubble.media .bubble-image { margin-bottom: 0; border-radius: 13px; }
 .bubble.media .bubble-meta { padding: 3px 6px 0; }
 
-.bubble-author { font-size: 12px; font-weight: 700; color: #93c5fd; margin-bottom: 2px; }
+.bubble-author { font-size: 12px; font-weight: 700; color: var(--author); margin-bottom: 2px; }
 .bubble-text { white-space: pre-wrap; }
 .bubble-text.deleted { color: var(--muted); font-style: italic; }
 
 .bubble-reply {
-  border-inline-start: 3px solid rgba(255, 255, 255, .5);
-  background: rgba(0, 0, 0, .2);
+  border-inline-start: 3px solid var(--bw2);
+  background: var(--bw);
   border-radius: 8px; padding: 4px 8px; margin-bottom: 5px; font-size: 13px;
 }
-.bubble-reply small { display: block; color: #bfdbfe; }
+.bubble-reply small { display: block; color: var(--on-bubble-soft); font-weight: 600; }
 
 /* نسبت ابعاد از روی خود عکس ست می‌شود تا موقع بارگذاری چیدمان نپرد. */
 .bubble-image {
   display: block; margin: 0 0 4px; border-radius: 12px; overflow: hidden;
-  background: rgba(0, 0, 0, .28); border: 0; padding: 0;
+  background: var(--bw); border: 0; padding: 0;
   width: 100%; max-height: 62vh;
 }
 .bubble-image img { display: block; width: 100%; height: 100%; object-fit: cover; }
 
 .bubble-meta {
   display: flex; align-items: center; gap: 5px; justify-content: flex-start;
-  font-size: 11px; color: rgba(232, 238, 246, .62); margin-top: 3px;
+  font-size: 11px; color: var(--on-bubble-soft); margin-top: 3px;
   direction: ltr;
 }
-.message-row.theirs .bubble-meta { color: var(--muted); }
 
 /* تیک وضعیت: در حال ارسال → ارسال شد → خوانده شد */
 .tick { display: inline-flex; align-items: center; }
@@ -306,23 +430,21 @@ button { cursor: pointer; }
 .voice-play {
   width: 36px; height: 36px; flex: none;
   border: 0; border-radius: 50%;
-  background: rgba(255, 255, 255, .16); color: #fff;
+  background: var(--bw2); color: inherit;
   display: grid; place-items: center;
 }
-.message-row.theirs .voice-play { background: rgba(255, 255, 255, .1); }
 .voice-play svg { width: 18px; height: 18px; }
 .voice-track {
   flex: 1; height: 4px; border-radius: 999px;
-  background: rgba(255, 255, 255, .22); cursor: pointer; position: relative;
+  background: var(--bw2); cursor: pointer; position: relative;
 }
-.message-row.theirs .voice-track { background: rgba(255, 255, 255, .14); }
 .voice-fill {
   height: 100%; width: 0; border-radius: 999px;
   background: var(--brand-dot); transition: width .1s linear;
 }
 .voice-time {
   font-size: 12px; font-variant-numeric: tabular-nums;
-  color: rgba(232, 238, 246, .75); min-width: 34px; text-align: left;
+  color: var(--on-bubble-soft); min-width: 34px; text-align: left;
 }
 
 /* نوار ضبط، جای کادر نوشتن می‌نشیند */
@@ -346,7 +468,7 @@ button { cursor: pointer; }
   width: 42px; height: 42px; border-radius: 50%;
   border: 1px solid var(--line); background: var(--bg-3); color: var(--text);
   display: grid; place-items: center; z-index: 5;
-  box-shadow: 0 8px 22px rgba(0, 0, 0, .45);
+  box-shadow: 0 8px 22px var(--shadow);
 }
 .jump-btn:active { background: var(--line); }
 .jump-badge {
@@ -361,7 +483,12 @@ button { cursor: pointer; }
   position: absolute; top: 2px; inset-inline-end: -34px;
   display: none; gap: 2px;
 }
-.bubble:hover .bubble-actions, .bubble.show-actions .bubble-actions { display: flex; }
+.bubble.show-actions .bubble-actions { display: flex; }
+/* روی لمسی hover «می‌چسبد» و دکمه‌ها بی‌دلیل باز می‌مانند؛ آنجا فقط
+   نگه‌داشتن انگشت (contextmenu) دکمه‌ها را می‌آورد. */
+@media (hover: hover) {
+  .bubble:hover .bubble-actions { display: flex; }
+}
 .bubble-actions button {
   width: 28px; height: 28px; border-radius: 8px; border: 0;
   background: var(--bg-3); color: var(--muted); display: grid; place-items: center;
@@ -441,21 +568,23 @@ button { cursor: pointer; }
   margin-inline: auto; width: fit-content; max-width: 86%; z-index: 80;
   background: var(--bg-3); border: 1px solid var(--line);
   border-radius: 999px; padding: 9px 18px; font-size: 13px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, .5);
+  box-shadow: 0 10px 30px var(--shadow);
 }
-.toast.error { border-color: rgba(239, 68, 68, .6); color: #fca5a5; }
+.toast.error { border-color: rgba(239, 68, 68, .6); color: var(--danger-soft); }
 
 .only-mobile { display: none; }
 
 /* ------------------------------ تماس صوتی ------------------------------ */
 
-.call-record span { color: var(--text); background: rgba(75, 59, 255, .16); }
+.call-record span { color: var(--text); background: var(--list-glow); border: 1px solid var(--line); }
 
 .call-overlay {
   position: fixed; inset: 0; z-index: 60;
   display: grid; place-items: center;
   padding: 24px;
   background: radial-gradient(120% 90% at 50% 0%, #1b2436 0%, #080c12 70%);
+  /* صفحه‌ی تماس در هر دو تم تیره می‌ماند، پس متنش را هم روشن نگه می‌داریم. */
+  color: #e8eef6;
   padding-top: calc(24px + var(--safe-top));
   padding-bottom: calc(24px + var(--safe-bottom));
 }
@@ -471,7 +600,7 @@ button { cursor: pointer; }
 }
 
 .call-name { font-size: 22px; }
-.call-state { font-size: 14px; font-variant-numeric: tabular-nums; }
+.call-state { font-size: 14px; font-variant-numeric: tabular-nums; color: rgba(232, 238, 246, .7); }
 
 .call-actions { display: flex; gap: 18px; margin-top: 22px; }
 
@@ -485,7 +614,7 @@ button { cursor: pointer; }
 .call-btn:active { transform: scale(.94); }
 .call-accept { background: #16a34a; }
 .call-hangup { background: var(--danger); }
-.call-mute { background: var(--bg-3); border: 1px solid var(--line); }
+.call-mute { background: rgba(255, 255, 255, .12); border: 1px solid rgba(255, 255, 255, .16); }
 .call-mute.is-on { background: #fbbf24; color: #1a1205; }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -512,4 +641,13 @@ button { cursor: pointer; }
 @media (prefers-reduced-motion: no-preference) {
   .message-row { animation: pop .16s ease-out; }
   @keyframes pop { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+  .modal-root:not(.is-hidden) .modal-backdrop { animation: fade .16s ease-out; }
+  .modal-root:not(.is-hidden) .modal { animation: rise .18s cubic-bezier(.2, .8, .2, 1); }
+  .call-overlay:not(.is-hidden) { animation: fade .2s ease-out; }
+  .toast:not(.is-hidden) { animation: rise .18s ease-out; }
+  .lightbox:not(.is-hidden) { animation: fade .16s ease-out; }
+
+  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes rise { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: none; } }
 }

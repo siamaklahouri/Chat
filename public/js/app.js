@@ -87,6 +87,35 @@
     el.classList.toggle('online', Boolean(online));
   }
 
+  /* ------------------------------ تم ظاهری ------------------------------ */
+
+  /**
+   * سه حالت دارد: «خودکار» (پیروی از سیستم‌عامل، پیش‌فرض) و دو حالت دستی.
+   * انتخاب دستی در همین مرورگر می‌ماند؛ CSS بقیه‌ی کار را می‌کند.
+   */
+  const THEME_KEY = 'messenger.theme';
+
+  const systemPrefersLight = () =>
+    window.matchMedia?.('(prefers-color-scheme: light)').matches ?? false;
+
+  function applyTheme(theme) {
+    if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
+    else delete document.documentElement.dataset.theme;
+  }
+
+  function toggleTheme() {
+    const stored = localStorage.getItem(THEME_KEY);
+    const effective = stored || (systemPrefersLight() ? 'light' : 'dark');
+    const next = effective === 'light' ? 'dark' : 'light';
+    // اگر انتخاب تازه همان سلیقه‌ی سیستم باشد، به حالت خودکار برمی‌گردیم.
+    if (next === (systemPrefersLight() ? 'light' : 'dark')) localStorage.removeItem(THEME_KEY);
+    else localStorage.setItem(THEME_KEY, next);
+    applyTheme(localStorage.getItem(THEME_KEY));
+    toast(next === 'light' ? 'تم روشن' : 'تم تیره');
+  }
+
+  applyTheme(localStorage.getItem(THEME_KEY));
+
   /**
    * نشانی فایل با توکن کوتاه‌عمرِ مخصوص فایل ساخته می‌شود — نه با توکن نشست،
    * چون توکن نشست در لاگ و تاریخچه می‌نشیند و دسترسی کامل به حساب می‌دهد.
@@ -321,11 +350,27 @@
     bubble.className = `bubble${grouped ? ' grouped' : ''}${mediaOnly ? ' media' : ''}`;
 
     const conv = state.conversations.get(state.activeId);
-    if (!mine && conv?.type === 'group' && !grouped) {
-      const author = document.createElement('div');
-      author.className = 'bubble-author';
-      author.textContent = senderName(message.senderId);
-      bubble.appendChild(author);
+    const inGroup = !mine && conv?.type === 'group';
+    if (inGroup) {
+      // نخستین پیام هر دسته آواتار می‌گیرد؛ بقیه فقط جای خالی، تا هم‌تراز بمانند.
+      if (grouped) {
+        const gap = document.createElement('span');
+        gap.className = 'row-avatar-gap';
+        row.appendChild(gap);
+      } else {
+        const sender = conv.members.find((m) => m.id === message.senderId);
+        const avatar = document.createElement('span');
+        avatar.className = 'avatar row-avatar';
+        paintAvatar(avatar, senderName(message.senderId), sender?.avatarColor, false);
+        row.appendChild(avatar);
+      }
+
+      if (!grouped) {
+        const author = document.createElement('div');
+        author.className = 'bubble-author';
+        author.textContent = senderName(message.senderId);
+        bubble.appendChild(author);
+      }
     }
 
     if (message.replyTo) {
@@ -2125,6 +2170,7 @@
     requestNotificationPermission();
   }
 
+  $('themeBtn').addEventListener('click', toggleTheme);
   $('newChatBtn').addEventListener('click', newChatModal);
   $('profileBtn').addEventListener('click', profileModal);
   $('chatInfoBtn').addEventListener('click', chatInfoModal);

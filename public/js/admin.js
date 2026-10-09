@@ -6,6 +6,10 @@
   const TOKEN_KEY = 'messenger.token';
   const fa = (n) => Number(n || 0).toLocaleString('fa-IR');
 
+  // همان تمی که کاربر در برنامه انتخاب کرده، اینجا هم اعمال می‌شود.
+  const theme = localStorage.getItem('messenger.theme');
+  if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
+
   let token = localStorage.getItem(TOKEN_KEY) || null;
   let filter = '';
   let currentUserId = null;

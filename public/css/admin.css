@@ -23,7 +23,7 @@
 }
 .stat strong { display: block; font-size: 22px; }
 .stat span { color: var(--muted); font-size: 12px; }
-.stat.pending strong { color: #fbbf24; }
+.stat.pending strong { color: var(--warn); }
 
 .panel {
   background: var(--bg-2); border: 1px solid var(--line);
@@ -55,7 +55,7 @@
   font-size: 11px; border-radius: 999px; padding: 2px 9px;
   border: 1px solid var(--line); color: var(--muted);
 }
-.tag.pending { color: #fbbf24; border-color: rgba(251, 191, 36, .4); }
-.tag.approved { color: #86efac; border-color: rgba(134, 239, 172, .35); }
-.tag.blocked { color: #fca5a5; border-color: rgba(239, 68, 68, .4); }
-.tag.admin { color: #93c5fd; border-color: rgba(147, 197, 253, .4); }
+.tag.pending { color: var(--warn); border-color: rgba(251, 191, 36, .4); }
+.tag.approved { color: var(--ok-soft); border-color: rgba(134, 239, 172, .4); }
+.tag.blocked { color: var(--danger-soft); border-color: rgba(239, 68, 68, .4); }
+.tag.admin { color: var(--author); border-color: rgba(147, 197, 253, .45); }
