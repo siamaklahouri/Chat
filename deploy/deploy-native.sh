@@ -112,6 +112,9 @@ Environment=NODE_ENV=production
 Environment=HOST=127.0.0.1
 Environment=PORT=$APP_PORT
 Environment=DATA_DIR=$APP_DATA
+# تنظیمات تماس صوتی (TURN) را اسکریپت deploy/setup-coturn.sh اینجا می‌نویسد.
+# خط دستور با «-» شروع می‌شود تا نبودن فایل سرویس را از کار نیندازد.
+EnvironmentFile=-/etc/9chat.env
 ExecStart=$NODE_BIN server/index.js
 Restart=always
 RestartSec=5

@@ -3,6 +3,8 @@
 const { WebSocketServer } = require('ws');
 const { userForToken } = require('./auth');
 const store = require('./store');
+const calls = require('./calls');
+const { createLimiter } = require('./ratelimit');
 
 /** conversationId -> Set<userId> of users currently typing */
 const typingState = new Map();
@@ -101,6 +103,126 @@ class Hub {
 
 const hub = new Hub();
 
+/* ------------------------------ تماس صوتی ------------------------------ */
+
+/**
+ * سیگنالینگ تماس روی همان وب‌سوکت چت انجام می‌شود: سرور فقط پیام‌های WebRTC را
+ * بین دو طرف جابه‌جا می‌کند و صدا از آن عبور نمی‌کند (مستقیم یا از TURN می‌رود).
+ * هر پیام سیگنالینگ بررسی می‌شود که فرستنده واقعاً یکی از دو طرف همان تماس است.
+ */
+const inviteLimiter = createLimiter({ windowMs: 60_000, max: 20 });
+
+const callError = (socket, reason) =>
+  socket.send(JSON.stringify({ type: 'call:error', reason }));
+
+/** رکورد تماس را در گفتگو ثبت و برای هر دو طرف می‌فرستد. */
+function recordCall(call, status, durationMs = null) {
+  try {
+    const message = store.createMessage({
+      conversationId: call.conversationId,
+      senderId: call.callerId,
+      kind: 'call',
+      body: status,
+      file: durationMs == null ? null : { durationMs },
+    });
+    hub.sendToConversation(call.conversationId, { type: 'message:new', message });
+  } catch (error) {
+    console.error('[call] ثبت رکورد تماس ناموفق بود:', error.message);
+  }
+}
+
+/** پایان تماس: ثبت رکورد، خبر دادن به طرفین و پاک کردن از حافظه. */
+function finishCall(callId, reason, endedBy = null) {
+  const call = calls.endCall(callId);
+  if (!call) return;
+
+  if (call.answered) {
+    recordCall(call, 'ended', Math.max(0, Date.now() - call.startedAt));
+  } else if (reason === 'declined') {
+    recordCall(call, 'declined');
+  } else {
+    recordCall(call, 'missed');
+  }
+
+  for (const userId of [call.callerId, call.calleeId]) {
+    if (userId === endedBy) continue;
+    hub.sendToUser(userId, { type: 'call:ended', callId, reason });
+  }
+  if (endedBy) hub.sendToUser(endedBy, { type: 'call:ended', callId, reason });
+}
+
+function handleCall(msg, user, socket) {
+  if (!calls.callsEnabled()) return callError(socket, 'disabled');
+
+  if (msg.type === 'call:invite') {
+    if (!Number.isInteger(msg.conversationId)) return;
+    const conv = store.getConversationRow(msg.conversationId);
+    if (!conv || conv.type !== 'direct') return callError(socket, 'not-direct');
+    if (!store.isMember(conv.id, user.id)) return callError(socket, 'forbidden');
+    if (!inviteLimiter.consume(`call:${user.id}`).allowed) return callError(socket, 'too-many');
+
+    const peerId = store.memberIdsOf(conv.id).find((id) => id !== user.id);
+    if (!peerId) return callError(socket, 'no-peer');
+    if (calls.isBusy(user.id)) return callError(socket, 'already-in-call');
+    if (calls.isBusy(peerId)) return callError(socket, 'busy');
+    if (!hub.isOnline(peerId)) return callError(socket, 'offline');
+
+    const callId = calls.createCall({
+      callerId: user.id,
+      calleeId: peerId,
+      conversationId: conv.id,
+      onTimeout: (id) => finishCall(id, 'timeout'),
+    });
+    hub.sendToUser(user.id, {
+      type: 'call:ringing',
+      callId,
+      conversationId: conv.id,
+      peerId,
+      timeoutMs: calls.RING_TIMEOUT_MS,
+    });
+    hub.sendToUser(peerId, {
+      type: 'call:incoming',
+      callId,
+      conversationId: conv.id,
+      from: store.publicUser(store.getUserById(user.id)),
+      timeoutMs: calls.RING_TIMEOUT_MS,
+    });
+    return;
+  }
+
+  if (typeof msg.callId !== 'string') return;
+  const call = calls.callOf(msg.callId);
+  if (!call) return callError(socket, 'gone');
+  const peerId = calls.peerInCall(call, user.id);
+  if (!peerId) return callError(socket, 'forbidden');
+
+  switch (msg.type) {
+    case 'call:accept': {
+      // فقط گیرنده می‌تواند جواب بدهد، و فقط یک بار.
+      if (call.calleeId !== user.id) return callError(socket, 'forbidden');
+      if (!calls.markAnswered(call.id)) return;
+      hub.sendToUser(call.callerId, { type: 'call:accepted', callId: call.id });
+      // سایر دستگاه‌های گیرنده دیگر زنگ نزنند.
+      hub.sendToUser(call.calleeId, { type: 'call:answered-elsewhere', callId: call.id });
+      break;
+    }
+    case 'call:decline':
+      if (call.calleeId !== user.id) return callError(socket, 'forbidden');
+      finishCall(call.id, 'declined', user.id);
+      break;
+    case 'call:end':
+      finishCall(call.id, call.answered ? 'hangup' : 'cancelled', user.id);
+      break;
+    case 'call:signal':
+      // محتوای سیگنال برای سرور بی‌معناست؛ فقط عیناً منتقل می‌شود.
+      if (!msg.data || typeof msg.data !== 'object') return;
+      hub.sendToUser(peerId, { type: 'call:signal', callId: call.id, data: msg.data });
+      break;
+    default:
+      break;
+  }
+}
+
 function setTyping(conversationId, userId, isTyping) {
   if (!typingState.has(conversationId)) typingState.set(conversationId, new Set());
   const set = typingState.get(conversationId);
@@ -113,9 +235,10 @@ function attach(server) {
   const wss = new WebSocketServer({
     server,
     path: '/ws',
-    // کلاینت فقط رویدادهای کوچک «در حال نوشتن» می‌فرستد؛ بدون این سقف، یک
-    // اتصال می‌توانست با فریم‌های عظیم حافظه‌ی سرور را پر کند.
-    maxPayload: 16 * 1024,
+    // کلاینت فقط رویدادهای کوچک (در حال نوشتن و سیگنالینگ تماس) می‌فرستد؛ بدون
+    // این سقف، یک اتصال می‌توانست با فریم‌های عظیم حافظه‌ی سرور را پر کند.
+    // SDP تماس صوتی چند کیلوبایت است، پس سقف را دست‌ودل‌بازتر اما بسته می‌گیریم.
+    maxPayload: 64 * 1024,
     verifyClient: ({ origin, req }, done) => {
       // اتصال از صفحه‌ی سایت دیگر پذیرفته نمی‌شود. (کلاینت‌های غیرمرورگری
       // مثل اپ اندروید اصلاً هدر Origin نمی‌فرستند و مجازند.)
@@ -176,12 +299,19 @@ function attach(server) {
           },
           user.id
         );
+        return;
+      }
+      if (typeof msg.type === 'string' && msg.type.startsWith('call:')) {
+        handleCall(msg, user, socket);
       }
     });
 
     socket.on('close', () => {
       const wentOffline = hub.remove(user.id, socket);
       if (wentOffline) {
+        // آخرین دستگاه کاربر رفت: اگر وسط تماس بود، تماس را ببند.
+        const callId = calls.callIdOfUser(user.id);
+        if (callId) finishCall(callId, 'disconnected', user.id);
         store.touchUser(user.id);
         hub.broadcastPresence(user.id, false);
       }

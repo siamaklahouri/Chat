@@ -18,6 +18,7 @@ const store = require('./store');
 const { sniff, sniffAudio } = require('./media');
 const { hub } = require('./realtime');
 const { createLimiter, rateLimit, ipOf } = require('./ratelimit');
+const { iceServers, callsEnabled } = require('./calls');
 
 const router = express.Router();
 
@@ -213,6 +214,16 @@ router.get(
   res.json({ users: store.findUserByHandle(handle, req.user.id).map(withPresence) });
   }
 );
+
+/* ------------------------------ تماس صوتی ------------------------------ */
+
+/**
+ * تنظیمات تماس صوتی. اعتبارنامه‌ی TURN کوتاه‌عمر است و هر بار تازه صادر می‌شود،
+ * پس لو رفتنش هم خطر درازمدتی ندارد. فقط کاربر تاییدشده آن را می‌گیرد.
+ */
+router.get('/call/config', requireApproved, (req, res) => {
+  res.json({ enabled: callsEnabled(), iceServers: iceServers(req.user.id) });
+});
 
 /* ----------------------------- conversations ---------------------------- */
 

@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS messages (
   id              INTEGER PRIMARY KEY AUTOINCREMENT,
   conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
   sender_id       INTEGER REFERENCES users(id) ON DELETE SET NULL,
-  kind            TEXT NOT NULL DEFAULT 'text' CHECK (kind IN ('text','image','voice','system')),
+  kind            TEXT NOT NULL DEFAULT 'text' CHECK (kind IN ('text','image','voice','call','system')),
   body            TEXT NOT NULL DEFAULT '',
   file_name       TEXT,
   file_mime       TEXT,
@@ -108,7 +108,7 @@ const messagesSchema =
   db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'messages'").get()?.sql ||
   '';
 
-if (messagesSchema && !messagesSchema.includes("'voice'")) {
+if (messagesSchema && !messagesSchema.includes("'call'")) {
   const columns = db
     .prepare('PRAGMA table_info(messages)')
     .all()
@@ -123,7 +123,7 @@ if (messagesSchema && !messagesSchema.includes("'voice'")) {
         id              INTEGER PRIMARY KEY AUTOINCREMENT,
         conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
         sender_id       INTEGER REFERENCES users(id) ON DELETE SET NULL,
-        kind            TEXT NOT NULL DEFAULT 'text' CHECK (kind IN ('text','image','voice','system')),
+        kind            TEXT NOT NULL DEFAULT 'text' CHECK (kind IN ('text','image','voice','call','system')),
         body            TEXT NOT NULL DEFAULT '',
         file_name       TEXT,
         file_mime       TEXT,
@@ -142,7 +142,7 @@ if (messagesSchema && !messagesSchema.includes("'voice'")) {
       CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id, id);
     `);
     db.exec('COMMIT');
-    console.log('[db] جدول پیام‌ها برای پشتیبانی از پیام صوتی بازسازی شد.');
+    console.log('[db] جدول پیام‌ها برای پشتیبانی از پیام صوتی و تماس بازسازی شد.');
   } catch (error) {
     db.exec('ROLLBACK');
     throw error;

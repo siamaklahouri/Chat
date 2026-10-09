@@ -27,6 +27,8 @@
     typingSentAt: 0,
     socket: null,
     fileToken: null,
+    call: null,
+    callEnabled: false,
     reconnectDelay: 1000,
     filter: '',
   };
@@ -206,6 +208,7 @@
     if (message.kind === 'system') return message.body;
     if (message.kind === 'image') return `${prefix}🖼 عکس${message.body ? ` — ${message.body}` : ''}`;
     if (message.kind === 'voice') return `${prefix}🎤 پیام صوتی`;
+    if (message.kind === 'call') return `📞 ${callRecordText(message)}`;
     return prefix + message.body;
   }
 
@@ -286,6 +289,9 @@
     );
     $('chatName').textContent = conv.title;
     $('chatStatus').textContent = chatStatusText(conv);
+    // تماس فقط در گفتگوی دونفره، و فقط اگر سرور TURN تنظیم شده باشد.
+    const callable = state.callEnabled && conv.type === 'direct' && Boolean(conv.peer);
+    $('callBtn').classList.toggle('is-hidden', !callable);
   }
 
   function senderName(senderId) {
@@ -411,6 +417,14 @@
     const total = Math.round((ms || 0) / 1000);
     return `${fa(Math.floor(total / 60))}:${String(total % 60).padStart(2, '0').replace(/\d/g, (d) => fa(d))}`;
   };
+
+  /** متن رکورد تماس در گفتگو؛ فرستنده‌ی رکورد همیشه تماس‌گیرنده است. */
+  function callRecordText(message) {
+    const mine = message.senderId === state.me?.id;
+    if (message.body === 'ended') return `تماس صوتی · ${clockText(message.durationMs)}`;
+    if (message.body === 'declined') return mine ? 'تماس رد شد' : 'تماس را رد کردید';
+    return mine ? 'تماس بی‌پاسخ' : 'تماس بی‌پاسخ';
+  }
 
   /** پخش‌کننده‌ی پیام صوتی: دکمه‌ی پخش، نوار پیشرفت و زمان. */
   function voicePlayer(message) {
@@ -542,11 +556,12 @@
         previous = null;
       }
 
-      if (message.kind === 'system') {
+      if (message.kind === 'system' || message.kind === 'call') {
         const system = document.createElement('div');
-        system.className = 'system-message';
+        system.className = `system-message${message.kind === 'call' ? ' call-record' : ''}`;
         system.innerHTML = '<span></span>';
-        system.firstChild.textContent = message.body;
+        system.firstChild.textContent =
+          message.kind === 'call' ? `📞 ${callRecordText(message)}` : message.body;
         list.appendChild(system);
         previous = null;
         continue;
@@ -1035,6 +1050,8 @@
 
     socket.addEventListener('close', (event) => {
       $('connectionState').textContent = 'قطع — تلاش برای اتصال…';
+      // بدون سوکت، سیگنالینگ تماس هم از کار می‌افتد.
+      if (state.call) teardownCall('ارتباط قطع شد');
       if (event.code === 4001) return signOut('نشست شما منقضی شده است. دوباره وارد شوید.');
       if (event.code === 4003) {
         return signOut(
@@ -1139,6 +1156,38 @@
         break;
       }
 
+      case 'call:ringing':
+        onCallRinging(event);
+        break;
+
+      case 'call:incoming':
+        onCallIncoming(event);
+        break;
+
+      case 'call:accepted':
+        onCallAccepted(event);
+        break;
+
+      case 'call:signal':
+        handleCallSignal(event);
+        break;
+
+      case 'call:answered-elsewhere':
+        // این تماس روی دستگاه دیگری جواب داده شد.
+        if (state.call && state.call.id === event.callId && !state.call.pc) teardownCall();
+        break;
+
+      case 'call:ended':
+        if (state.call && (!state.call.id || state.call.id === event.callId)) {
+          teardownCall(CALL_ENDINGS[event.reason] || 'تماس پایان یافت');
+        }
+        break;
+
+      case 'call:error':
+        if (state.call) teardownCall(CALL_ERRORS[event.reason] || 'تماس برقرار نشد');
+        else toast(CALL_ERRORS[event.reason] || 'تماس برقرار نشد', true);
+        break;
+
       case 'me:updated':
         state.me = event.user;
         renderMe();
@@ -1207,7 +1256,9 @@
         ? '🖼 عکس فرستاد'
         : message.kind === 'voice'
           ? '🎤 پیام صوتی فرستاد'
-          : message.body.slice(0, 120);
+          : message.kind === 'call'
+            ? `📞 ${callRecordText(message)}`
+            : message.body.slice(0, 120);
 
     if (window.AndroidBridge?.notify) {
       try {
@@ -1261,6 +1312,366 @@
     const result = await Notification.requestPermission().catch(() => 'default');
     if (force) toast(result === 'granted' ? 'اعلان‌ها فعال شد.' : 'اعلان‌ها فعال نشد.', result !== 'granted');
   }
+
+  /* ------------------------------ تماس صوتی ----------------------------- */
+
+  /**
+   * تماس صوتی با WebRTC: صدا مستقیم بین دو مرورگر می‌رود و فقط اگر شبکه اجازه
+   * نداد از سرور TURN رله می‌شود. سرور ما هیچ صدایی نمی‌شنود؛ کارش تنها رساندن
+   * پیام‌های هماهنگی (offer/answer/candidate) به طرف مقابل است.
+   */
+  const CALL_ERRORS = {
+    disabled: 'تماس صوتی روی این سرور فعال نیست.',
+    'not-direct': 'تماس صوتی فقط در گفتگوی دونفره ممکن است.',
+    forbidden: 'اجازه‌ی این تماس را ندارید.',
+    'too-many': 'تماس‌های زیادی گرفته‌اید؛ کمی بعد دوباره تلاش کنید.',
+    'no-peer': 'طرف مقابل پیدا نشد.',
+    'already-in-call': 'همین حالا در یک تماس هستید.',
+    busy: 'طرف مقابل در تماس دیگری است.',
+    offline: 'طرف مقابل آنلاین نیست.',
+    gone: 'این تماس دیگر برقرار نیست.',
+  };
+
+  const CALL_ENDINGS = {
+    declined: 'تماس رد شد',
+    timeout: 'پاسخی داده نشد',
+    cancelled: 'تماس لغو شد',
+    offline: 'طرف مقابل آنلاین نیست',
+    disconnected: 'ارتباط قطع شد',
+    failed: 'برقراری تماس ممکن نشد',
+  };
+
+  function sendWs(payload) {
+    if (!state.socket || state.socket.readyState !== WebSocket.OPEN) return false;
+    state.socket.send(JSON.stringify(payload));
+    return true;
+  }
+
+  /* --- زنگ: با WebAudio ساخته می‌شود تا فایل صوتی اضافه‌ای لازم نباشد --- */
+  const ring = {
+    ctx: null,
+    timer: null,
+    start(incoming) {
+      this.stop();
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      try {
+        this.ctx = new Ctx();
+      } catch {
+        return;
+      }
+      const beep = () => {
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = incoming ? 660 : 440;
+        gain.gain.value = 0.0001;
+        osc.connect(gain).connect(this.ctx.destination);
+        const now = this.ctx.currentTime;
+        gain.gain.exponentialRampToValueAtTime(0.08, now + 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.6);
+        osc.start(now);
+        osc.stop(now + 0.65);
+      };
+      beep();
+      this.timer = setInterval(beep, incoming ? 1200 : 2500);
+    },
+    stop() {
+      clearInterval(this.timer);
+      this.timer = null;
+      if (this.ctx) {
+        this.ctx.close().catch(() => {});
+        this.ctx = null;
+      }
+    },
+  };
+
+  /* ------------------------------ نمایش تماس ----------------------------- */
+
+  function showCallOverlay({ name, color, incoming }) {
+    paintAvatar($('callAvatar'), name, color || '#2563eb', false);
+    $('callName').textContent = name;
+    $('callAccept').classList.toggle('is-hidden', !incoming);
+    $('callMute').classList.toggle('is-hidden', incoming);
+    $('callMute').classList.remove('is-on');
+    $('callOverlay').classList.remove('is-hidden');
+    document.body.classList.add('in-call');
+  }
+
+  function setCallState(text) {
+    $('callState').textContent = text;
+  }
+
+  function hideCallOverlay() {
+    $('callOverlay').classList.add('is-hidden');
+    document.body.classList.remove('in-call');
+  }
+
+  function startCallTimer() {
+    clearInterval(state.call.timer);
+    const from = Date.now();
+    const tick = () => setCallState(clockText(Date.now() - from));
+    tick();
+    state.call.timer = setInterval(tick, 1000);
+  }
+
+  /** همه‌ی منابع تماس را آزاد می‌کند؛ باید در هر مسیر پایان صدا زده شود. */
+  function teardownCall(message) {
+    const call = state.call;
+    state.call = null;
+    ring.stop();
+    if (call) {
+      clearInterval(call.timer);
+      call.stream?.getTracks().forEach((track) => track.stop());
+      if (call.pc) {
+        call.pc.onicecandidate = null;
+        call.pc.ontrack = null;
+        call.pc.onconnectionstatechange = null;
+        try {
+          call.pc.close();
+        } catch {
+          /* already closed */
+        }
+      }
+    }
+    const audio = $('remoteAudio');
+    audio.srcObject = null;
+    hideCallOverlay();
+    if (message) toast(message);
+  }
+
+  /* --------------------------- برقراری ارتباط --------------------------- */
+
+  async function callIceServers() {
+    // اعتبارنامه‌ی TURN کوتاه‌عمر است، پس برای هر تماس تازه گرفته می‌شود.
+    try {
+      const data = await api('/call/config');
+      return data.iceServers || [];
+    } catch {
+      return [];
+    }
+  }
+
+  async function createPeer() {
+    const call = state.call;
+    const iceServers = await callIceServers();
+    if (!state.call || state.call !== call) return null; // تماس در این فاصله بسته شد
+
+    const pc = new RTCPeerConnection({ iceServers });
+    call.pc = pc;
+
+    call.stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      video: false,
+    });
+    if (!state.call || state.call !== call) {
+      call.stream.getTracks().forEach((t) => t.stop());
+      return null;
+    }
+    for (const track of call.stream.getTracks()) pc.addTrack(track, call.stream);
+
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        sendWs({ type: 'call:signal', callId: call.id, data: { candidate: event.candidate } });
+      }
+    };
+
+    pc.ontrack = (event) => {
+      $('remoteAudio').srcObject = event.streams[0];
+      $('remoteAudio').play?.().catch(() => {});
+    };
+
+    pc.onconnectionstatechange = () => {
+      if (!state.call || state.call !== call) return;
+      if (pc.connectionState === 'connected') {
+        ring.stop();
+        $('callMute').classList.remove('is-hidden');
+        $('callAccept').classList.add('is-hidden');
+        startCallTimer();
+      } else if (pc.connectionState === 'failed') {
+        endCall('failed');
+      }
+    };
+
+    return pc;
+  }
+
+  /** candidate هایی که پیش از تنظیم توضیح طرف مقابل می‌رسند باید صبر کنند. */
+  async function flushPendingCandidates() {
+    const call = state.call;
+    if (!call?.pc) return;
+    for (const candidate of call.pendingCandidates) {
+      await call.pc.addIceCandidate(candidate).catch(() => {});
+    }
+    call.pendingCandidates = [];
+  }
+
+  async function handleCallSignal(event) {
+    const call = state.call;
+    if (!call || call.id !== event.callId) return;
+    const { sdp, candidate } = event.data || {};
+
+    try {
+      if (sdp) {
+        if (!call.pc && call.role === 'callee') {
+          if (!(await createPeer())) return;
+        }
+        if (!call.pc) return;
+        await call.pc.setRemoteDescription(new RTCSessionDescription(sdp));
+        if (sdp.type === 'offer') {
+          const answer = await call.pc.createAnswer();
+          await call.pc.setLocalDescription(answer);
+          sendWs({ type: 'call:signal', callId: call.id, data: { sdp: call.pc.localDescription } });
+        }
+        await flushPendingCandidates();
+        return;
+      }
+
+      if (candidate) {
+        const ice = new RTCIceCandidate(candidate);
+        if (call.pc?.remoteDescription?.type) await call.pc.addIceCandidate(ice).catch(() => {});
+        else call.pendingCandidates.push(ice);
+      }
+    } catch (error) {
+      console.error('[call] خطا در هماهنگی تماس:', error);
+      endCall('failed');
+    }
+  }
+
+  /* ----------------------------- کنش‌های کاربر ---------------------------- */
+
+  function startCall() {
+    const conv = state.conversations.get(state.activeId);
+    if (!conv || conv.type !== 'direct' || !conv.peer) return;
+    if (state.call) return toast('همین حالا در یک تماس هستید.', true);
+    if (!window.RTCPeerConnection || !navigator.mediaDevices?.getUserMedia) {
+      return toast('مرورگر شما تماس صوتی را پشتیبانی نمی‌کند.', true);
+    }
+
+    state.call = {
+      id: null,
+      role: 'caller',
+      conversationId: conv.id,
+      peerName: conv.title,
+      peerColor: conv.avatarColor,
+      pc: null,
+      stream: null,
+      timer: null,
+      pendingCandidates: [],
+    };
+    showCallOverlay({ name: conv.title, color: conv.avatarColor, incoming: false });
+    setCallState('در حال زنگ زدن…');
+    if (!sendWs({ type: 'call:invite', conversationId: conv.id })) {
+      teardownCall('ارتباط با سرور برقرار نیست.');
+    }
+  }
+
+  async function acceptCall() {
+    const call = state.call;
+    if (!call || call.role !== 'callee') return;
+    ring.stop();
+    $('callAccept').classList.add('is-hidden');
+    setCallState('در حال اتصال…');
+    try {
+      // اجازه‌ی میکروفون پیش از پذیرش گرفته می‌شود تا تماس بی‌صدا شروع نشود.
+      if (!(await createPeer())) return;
+    } catch {
+      sendWs({ type: 'call:decline', callId: call.id });
+      teardownCall('دسترسی به میکروفون داده نشد.');
+      return;
+    }
+    sendWs({ type: 'call:accept', callId: call.id });
+  }
+
+  /** پایان تماس از سمت ما. */
+  function endCall(reason) {
+    const call = state.call;
+    if (!call) return;
+    if (call.id) {
+      sendWs({
+        type: call.role === 'callee' && !call.pc ? 'call:decline' : 'call:end',
+        callId: call.id,
+      });
+    }
+    teardownCall(reason ? CALL_ENDINGS[reason] : null);
+  }
+
+  function toggleMute() {
+    const call = state.call;
+    if (!call?.stream) return;
+    const track = call.stream.getAudioTracks()[0];
+    if (!track) return;
+    track.enabled = !track.enabled;
+    $('callMute').classList.toggle('is-on', !track.enabled);
+    $('callMute').setAttribute(
+      'aria-label',
+      track.enabled ? 'بی‌صدا کردن میکروفون' : 'روشن کردن میکروفون'
+    );
+    toast(track.enabled ? 'میکروفون روشن شد.' : 'میکروفون بی‌صدا شد.');
+  }
+
+  /* ------------------------- رویدادهای رسیده از سرور ----------------------- */
+
+  function onCallRinging(event) {
+    if (!state.call || state.call.role !== 'caller') return;
+    state.call.id = event.callId;
+    ring.start(false);
+  }
+
+  async function onCallIncoming(event) {
+    if (state.call) {
+      // روی این دستگاه تماس دیگری در جریان است؛ به سرور خبر می‌دهیم.
+      sendWs({ type: 'call:decline', callId: event.callId });
+      return;
+    }
+    state.call = {
+      id: event.callId,
+      role: 'callee',
+      conversationId: event.conversationId,
+      peerName: event.from?.displayName || 'کاربر',
+      peerColor: event.from?.avatarColor,
+      pc: null,
+      stream: null,
+      timer: null,
+      pendingCandidates: [],
+    };
+    showCallOverlay({
+      name: state.call.peerName,
+      color: state.call.peerColor,
+      incoming: true,
+    });
+    setCallState('تماس صوتی ورودی…');
+    ring.start(true);
+    if (document.visibilityState !== 'visible') {
+      notify({ id: event.conversationId, title: state.call.peerName }, {
+        kind: 'text',
+        body: 'تماس صوتی…',
+      });
+    }
+  }
+
+  async function onCallAccepted(event) {
+    const call = state.call;
+    if (!call || call.id !== event.callId || call.role !== 'caller') return;
+    ring.stop();
+    setCallState('در حال اتصال…');
+    try {
+      const pc = await createPeer();
+      if (!pc) return;
+      const offer = await pc.createOffer({ offerToReceiveAudio: true });
+      await pc.setLocalDescription(offer);
+      sendWs({ type: 'call:signal', callId: call.id, data: { sdp: pc.localDescription } });
+    } catch {
+      endCall('failed');
+      toast('دسترسی به میکروفون داده نشد.', true);
+    }
+  }
+
+  $('callBtn').addEventListener('click', startCall);
+  $('callAccept').addEventListener('click', acceptCall);
+  $('callMute').addEventListener('click', toggleMute);
+  $('callHangup').addEventListener('click', () => endCall());
 
   /* ------------------------------- پنجره‌ها ----------------------------- */
 
@@ -1703,6 +2114,12 @@
     $('appScreen').classList.remove('is-hidden');
     renderMe();
     await loadConversations();
+    api('/call/config')
+      .then((data) => {
+        state.callEnabled = Boolean(data.enabled);
+        if (state.activeId) renderChatHeader();
+      })
+      .catch(() => {});
     connectSocket();
     showWipeInfo();
     requestNotificationPermission();

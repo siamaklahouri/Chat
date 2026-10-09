@@ -447,6 +447,55 @@ button { cursor: pointer; }
 
 .only-mobile { display: none; }
 
+/* ------------------------------ تماس صوتی ------------------------------ */
+
+.call-record span { color: var(--text); background: rgba(75, 59, 255, .16); }
+
+.call-overlay {
+  position: fixed; inset: 0; z-index: 60;
+  display: grid; place-items: center;
+  padding: 24px;
+  background: radial-gradient(120% 90% at 50% 0%, #1b2436 0%, #080c12 70%);
+  padding-top: calc(24px + var(--safe-top));
+  padding-bottom: calc(24px + var(--safe-bottom));
+}
+
+.call-card {
+  display: grid; justify-items: center; gap: 14px;
+  text-align: center;
+}
+
+.call-avatar {
+  width: 112px; height: 112px; font-size: 42px;
+  box-shadow: 0 0 0 10px rgba(75, 59, 255, .12);
+}
+
+.call-name { font-size: 22px; }
+.call-state { font-size: 14px; font-variant-numeric: tabular-nums; }
+
+.call-actions { display: flex; gap: 18px; margin-top: 22px; }
+
+.call-btn {
+  width: 62px; height: 62px; border-radius: 50%;
+  display: inline-grid; place-items: center;
+  border: none; color: #fff; cursor: pointer;
+  background: var(--bg-3);
+  transition: transform .12s ease, background .12s ease;
+}
+.call-btn:active { transform: scale(.94); }
+.call-accept { background: #16a34a; }
+.call-hangup { background: var(--danger); }
+.call-mute { background: var(--bg-3); border: 1px solid var(--line); }
+.call-mute.is-on { background: #fbbf24; color: #1a1205; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .call-overlay:not(.is-hidden) .call-avatar { animation: call-pulse 1.8s ease-in-out infinite; }
+  @keyframes call-pulse {
+    0%, 100% { box-shadow: 0 0 0 10px rgba(75, 59, 255, .12); }
+    50% { box-shadow: 0 0 0 20px rgba(75, 59, 255, .05); }
+  }
+}
+
 /* -------------------------------- موبایل ------------------------------- */
 
 @media (max-width: 820px) {

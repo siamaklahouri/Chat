@@ -46,6 +46,8 @@ const publicMessage = (row) => ({
   body: row.deleted_at ? '' : row.body,
   caption: row.deleted_at ? '' : row.body,
   attachment: attachmentOf(row),
+  // برای پیام صوتی داخل attachment هم هست؛ برای رکورد تماس اینجا لازم است.
+  durationMs: row.deleted_at ? null : row.duration_ms,
   replyToId: row.reply_to_id,
   createdAt: row.created_at,
   editedAt: row.edited_at,

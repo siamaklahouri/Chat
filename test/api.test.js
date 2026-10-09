@@ -15,11 +15,15 @@ const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'messenger-test-'));
 process.env.DATA_DIR = TMP;
 process.env.DB_FILE = path.join(TMP, 'test.db');
 process.env.UPLOAD_DIR = path.join(TMP, 'uploads');
+// تماس صوتی فقط وقتی فعال است که TURN تنظیم شده باشد؛ برای آزمون روشنش می‌کنیم.
+process.env.TURN_HOST = 'turn.example.test';
+process.env.TURN_SECRET = 'secret-for-tests';
 
 const { server } = require('../server/index.js');
 const WebSocket = require('ws');
 
 let base;
+const context = {};
 
 test.before(async () => {
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -27,6 +31,14 @@ test.before(async () => {
 });
 
 test.after(() => {
+  // سوکت‌های باز نگه‌داشته‌شده مانع بسته شدن سرور و پایان آزمون می‌شوند.
+  for (const socket of [...(context.sockets || []), ...(context.callSockets || [])]) {
+    try {
+      socket.close();
+    } catch {
+      /* already closed */
+    }
+  }
   server.close();
   fs.rmSync(TMP, { recursive: true, force: true });
 });
@@ -97,8 +109,6 @@ const nextEvent = (socket, type, timeout = 4000) =>
     };
     socket.on('message', onMessage);
   });
-
-const context = {};
 
 test('نخستین کاربر به‌صورت خودکار مدیر و تاییدشده است', async () => {
   const res = await call('/api/auth/register', {
@@ -726,4 +736,122 @@ test('کاربر فقط با نام کاربری دقیق پیدا می‌شود
     const res = await call(`/api/users?q=${encodeURIComponent(q)}`, { token: context.adminToken });
     assert.equal(res.body.users.length, 0, `«${q}» نباید کسی را لو بدهد`);
   }
+});
+
+/* ------------------------------ تماس صوتی ------------------------------ */
+
+test('تنظیمات تماس: اعتبارنامه‌ی TURN موقت و مخصوص همین کاربر است', async () => {
+  const res = await call('/api/call/config', { token: context.adminToken });
+  assert.equal(res.status, 200);
+  assert.equal(res.body.enabled, true);
+
+  const turn = res.body.iceServers.find((s) => String(s.urls).includes('turn:'));
+  assert.ok(turn, 'سرور TURN باید در فهرست باشد');
+
+  const [expiresAt, user] = turn.username.split(':');
+  assert.match(user, /^u\d+$/);
+  assert.ok(Number(expiresAt) > Math.floor(Date.now() / 1000), 'اعتبارنامه نباید منقضی باشد');
+
+  // رمز باید HMAC همان نام کاربری با راز مشترک باشد (همان چیزی که coturn می‌سنجد)
+  const expected = require('node:crypto')
+    .createHmac('sha1', process.env.TURN_SECRET)
+    .update(turn.username)
+    .digest('base64');
+  assert.equal(turn.credential, expected);
+
+  // بدون نشست، تنظیمات (و راز) اصلاً برگردانده نمی‌شود.
+  const anonymous = await call('/api/call/config');
+  assert.equal(anonymous.status, 401);
+});
+
+test('تماس صوتی: زنگ، پاسخ، سیگنالینگ و ثبت رکورد در گفتگو', async () => {
+  // سوکت‌های تازه با توکن‌های فعلی (رمز سارا در آزمون قبلی عوض شده است)
+  const adminSocket = await openSocket(context.adminToken);
+  const saraSocket = await openSocket(context.saraToken);
+  context.callSockets = [adminSocket, saraSocket];
+
+  const ringing = nextEvent(adminSocket, 'call:ringing');
+  const incoming = nextEvent(saraSocket, 'call:incoming');
+  adminSocket.send(
+    JSON.stringify({ type: 'call:invite', conversationId: context.conversationId })
+  );
+
+  const ring = await ringing;
+  const invite = await incoming;
+  assert.equal(ring.callId, invite.callId);
+  assert.equal(invite.conversationId, context.conversationId);
+  assert.equal(invite.from.username, 'admin');
+
+  // پاسخ گیرنده باید به تماس‌گیرنده برسد
+  const accepted = nextEvent(adminSocket, 'call:accepted');
+  saraSocket.send(JSON.stringify({ type: 'call:accept', callId: invite.callId }));
+  assert.equal((await accepted).callId, invite.callId);
+
+  // سیگنال WebRTC عیناً به طرف مقابل منتقل می‌شود
+  const relayed = nextEvent(saraSocket, 'call:signal');
+  adminSocket.send(
+    JSON.stringify({
+      type: 'call:signal',
+      callId: invite.callId,
+      data: { sdp: { type: 'offer', sdp: 'v=0' } },
+    })
+  );
+  assert.deepEqual((await relayed).data, { sdp: { type: 'offer', sdp: 'v=0' } });
+
+  // پایان تماس: رکوردش باید در گفتگو ثبت شود
+  const record = nextEvent(saraSocket, 'message:new');
+  const ended = nextEvent(saraSocket, 'call:ended');
+  adminSocket.send(JSON.stringify({ type: 'call:end', callId: invite.callId }));
+  assert.equal((await ended).reason, 'hangup');
+
+  const message = (await record).message;
+  assert.equal(message.kind, 'call');
+  assert.equal(message.body, 'ended');
+  assert.ok(message.durationMs >= 0);
+});
+
+test('تماس صوتی: فقط طرف‌های همان تماس می‌توانند سیگنال بفرستند', async () => {
+  const [adminSocket, saraSocket] = context.callSockets;
+
+  // «علی» نه عضو این گفتگو است و نه طرف تماس
+  const outsiderSocket = await openSocket(context.aliToken);
+
+  const incoming = nextEvent(saraSocket, 'call:incoming');
+  adminSocket.send(
+    JSON.stringify({ type: 'call:invite', conversationId: context.conversationId })
+  );
+  const { callId } = await incoming;
+
+  // نفر سوم شناسه‌ی تماس را حدس زده: باید رد شود، نه رله
+  const refused = nextEvent(outsiderSocket, 'call:error');
+  outsiderSocket.send(JSON.stringify({ type: 'call:signal', callId, data: { sdp: 'x' } }));
+  assert.equal((await refused).reason, 'forbidden');
+
+  // و تماس‌گیرنده نمی‌تواند به‌جای گیرنده تماس را «جواب» بدهد
+  const notAllowed = nextEvent(adminSocket, 'call:error');
+  adminSocket.send(JSON.stringify({ type: 'call:accept', callId }));
+  assert.equal((await notAllowed).reason, 'forbidden');
+
+  const declined = nextEvent(adminSocket, 'call:ended');
+  saraSocket.send(JSON.stringify({ type: 'call:decline', callId }));
+  assert.equal((await declined).reason, 'declined');
+
+  outsiderSocket.close();
+});
+
+test('تماس صوتی: در گفتگوی گروهی تماس گرفته نمی‌شود', async () => {
+  const [adminSocket] = context.callSockets;
+  const sara = require('../server/store.js').getUserByUsername('sara');
+  const group = await call('/api/conversations/group', {
+    method: 'POST',
+    token: context.adminToken,
+    body: { title: 'گروه آزمون تماس', memberIds: [sara.id] },
+  });
+  assert.equal(group.status, 201);
+
+  const refused = nextEvent(adminSocket, 'call:error');
+  adminSocket.send(
+    JSON.stringify({ type: 'call:invite', conversationId: group.body.conversation.id })
+  );
+  assert.equal((await refused).reason, 'not-direct');
 });
