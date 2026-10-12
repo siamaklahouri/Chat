@@ -127,4 +127,32 @@ guard || true
   fail "وقتی nginx پیکربندی را رد کرد، فایل باید دست‌نخورده برمی‌گشت"
 ok "اگر nginx پیکربندی را نپذیرد، تغییر برگردانده می‌شود"
 
-printf '\n✅ گواهی پشتیبان و نگهبانش سالم‌اند.\n'
+# ------------------------------------------------------------- مانور
+rm -f "$SB_INVALID"
+make_le_cert 60
+guard   # برگشت به حالت سالم
+
+drill() {
+  PATH="$SB/bin:$PATH" TLS_DIR="$SB/tls" NGINX_VHOST="$VHOST" \
+    GUARD_BIN="$SB/bin/9chat-cert-guard" DRILL_DIR="$SB/drill" \
+    LE_CRT="$SB/le/fullchain.pem" LE_KEY="$SB/le/privkey.pem" \
+    bash "$REPO/deploy/drill-offline-tls.sh" 9chat.ir "$1" > "$SB/out.log" 2>&1
+}
+
+le_before="$(sha256sum "$SB/le/fullchain.pem" | cut -d' ' -f1)"
+drill start || fail "مانور شروع نشد"
+[[ "$(cert_in_vhost)" == "$SB/tls/server.crt" ]] ||
+  fail "مانور باید به پشتیبان سوئیچ می‌کرد — الان: $(cert_in_vhost)"
+ok "مانور: سوئیچ به گواهی پشتیبان"
+
+[[ "$(sha256sum "$SB/le/fullchain.pem" | cut -d' ' -f1)" == "$le_before" ]] ||
+  fail "مانور به گواهی واقعی Let's Encrypt دست زد"
+ok "مانور به فایل‌های واقعی Let's Encrypt دست نمی‌زند"
+
+drill end || fail "مانور تمام نشد"
+[[ "$(cert_in_vhost)" == "$SB/le/fullchain.pem" ]] ||
+  fail "بعد از پایان مانور باید برمی‌گشت — الان: $(cert_in_vhost)"
+[[ ! -d "$SB/drill" ]] || fail "پوشه‌ی موقت مانور پاک نشد"
+ok "مانور: برگشت به حالت عادی و پاکسازی"
+
+printf '\n✅ گواهی پشتیبان، نگهبان و مانورش سالم‌اند.\n'
