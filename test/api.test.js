@@ -874,3 +874,31 @@ test('تماس صوتی: در گفتگوی گروهی تماس گرفته نمی
   );
   assert.equal((await refused).reason, 'not-direct');
 });
+
+/* --------------------------- دانلود اپ اندروید --------------------------- */
+
+test('فایل نصبی اندروید از خود سرور سرو می‌شود (بدون نیاز به فروشگاه یا اینترنت جهانی)', async () => {
+  // پوشه‌ی جداگانه، تا آزمون به فایل واقعی مخزن وابسته نباشد.
+  const apkDir = path.join(TMP, 'apks');
+  fs.mkdirSync(apkDir, { recursive: true });
+  for (const name of ['9chat-1.2.apk', '9chat-1.10.apk', '9chat-1.9.apk', 'readme.txt']) {
+    fs.writeFileSync(path.join(apkDir, name), 'x'.repeat(16));
+  }
+
+  const { newestApkFor } = require('../server/index.js');
+  // مرتب‌سازی باید عددی باشد وگرنه 1.9 تازه‌تر از 1.10 شمرده می‌شود.
+  assert.equal(path.basename(newestApkFor(apkDir)), '9chat-1.10.apk');
+  assert.equal(newestApkFor(path.join(TMP, 'nothing-here')), null);
+
+  const info = await call('/api/app/android');
+  assert.equal(info.status, 200);
+  assert.equal(info.body.available, true);
+  assert.equal(info.body.url, '/app.apk');
+  assert.ok(info.body.name.endsWith('.apk'));
+
+  const res = await fetch(`${base}/app.apk`);
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('content-type'), 'application/vnd.android.package-archive');
+  assert.match(res.headers.get('content-disposition') || '', /\.apk/);
+  assert.ok((await res.arrayBuffer()).byteLength > 0);
+});

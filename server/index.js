@@ -1,5 +1,6 @@
 'use strict';
 
+const fs = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
 const express = require('express');
@@ -14,6 +15,7 @@ const store = require('./store');
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || '0.0.0.0';
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
+const APK_DIR = process.env.APK_DIR || path.join(__dirname, '..', 'dist');
 
 /**
  * نوشته‌ای که پایین ستون گفتگوها به کاربر نشان داده می‌شود.
@@ -94,6 +96,48 @@ app.use(
 
 app.get('/admin', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'admin.html')));
 
+/**
+ * دانلود اپ اندروید از خود سرور.
+ *
+ * دلیلش فقط راحتی نیست: اگر دسترسی به اینترنت جهانی قطع شود، کاربر نه به
+ * گیت‌هاب می‌رسد و نه به هیچ فروشگاهی. تازه‌ترین APK داخل پوشه‌ی dist سرو
+ * می‌شود تا نصب و به‌روزرسانی کاملاً داخلی بماند.
+ */
+const newestApkFor = (dir) => {
+  let files;
+  try {
+    files = fs.readdirSync(dir).filter((name) => name.endsWith('.apk'));
+  } catch {
+    return null;
+  }
+  if (files.length === 0) return null;
+  // نام فایل‌ها نسخه‌دار است (9chat-1.2.apk)؛ مقایسه باید عددی باشد وگرنه
+  // «1.9» تازه‌تر از «1.10» شمرده می‌شود.
+  files.sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
+  return path.join(dir, files[files.length - 1]);
+};
+
+const newestApk = () => newestApkFor(APK_DIR);
+
+app.get('/app.apk', (req, res) => {
+  const file = newestApk();
+  if (!file) return res.status(404).json({ error: 'فایل نصبی موجود نیست.' });
+  res.type('application/vnd.android.package-archive');
+  res.download(file, path.basename(file));
+});
+
+/** نسخه‌ی موجود، تا صفحه بتواند نام فایل و حجمش را نشان بدهد. */
+app.get('/api/app/android', (req, res) => {
+  const file = newestApk();
+  if (!file) return res.json({ available: false });
+  res.json({
+    available: true,
+    name: path.basename(file),
+    size: fs.statSync(file).size,
+    url: '/app.apk',
+  });
+});
+
 // Unknown non-API routes fall back to the single page app.
 app.use((req, res, next) => {
   if (req.method !== 'GET' || req.path.startsWith('/api/')) return next();
@@ -134,4 +178,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { app, server };
+module.exports = { app, server, newestApkFor };

@@ -2335,7 +2335,21 @@
     closeModal();
   });
 
+  /** اگر فایل نصبی روی سرور باشد، پیوند دانلودش را در صفحه‌ی ورود نشان می‌دهد. */
+  async function showApkLink() {
+    try {
+      const res = await fetch('/api/app/android');
+      const data = await res.json();
+      if (!data.available) return;
+      $('apkMeta').textContent = `${data.name} · ${fileSize(data.size)}`;
+      $('apkLink').classList.remove('is-hidden');
+    } catch {
+      /* نبودش ایرادی ندارد */
+    }
+  }
+
   async function boot() {
+    showApkLink();
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').catch(() => {});
       navigator.serviceWorker.addEventListener('message', (event) => {
