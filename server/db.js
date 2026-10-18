@@ -92,6 +92,7 @@ for (const [table, column, definition] of [
   ['members', 'cleared_up_to_id', 'INTEGER NOT NULL DEFAULT 0'],
   ['members', 'hidden', 'INTEGER NOT NULL DEFAULT 0'],
   ['messages', 'duration_ms', 'INTEGER'],
+  ['users', 'avatar_at', 'INTEGER'],
 ]) {
   const existing = db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
   if (!existing.includes(column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);

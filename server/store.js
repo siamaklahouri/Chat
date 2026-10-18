@@ -20,6 +20,9 @@ const publicUser = (row) =>
     displayName: row.display_name,
     bio: row.bio,
     avatarColor: row.avatar_color,
+    // نشانی با زمانِ آخرین تغییر امضا می‌شود تا وقتی کاربر عکسش را عوض کرد،
+    // نسخه‌ی کش‌شده‌ی مرورگر دیگر استفاده نشود.
+    avatarUrl: row.avatar_at ? `/api/avatars/${row.id}?v=${row.avatar_at}` : null,
     status: row.status,
     isAdmin: Boolean(row.is_admin),
     lastSeenAt: row.last_seen_at,
@@ -103,6 +106,8 @@ function setUserPassword(id, password) {
 }
 
 function deleteUser(id) {
+  // فایل عکس هم باید برود، وگرنه روی دیسک یتیم می‌ماند.
+  fs.rmSync(path.join(UPLOAD_DIR, `avatar-${id}`), { force: true });
   db.prepare('DELETE FROM users WHERE id = ?').run(id);
 }
 
@@ -380,6 +385,25 @@ const rawMessage = (id) => db.prepare('SELECT * FROM messages WHERE id = ?').get
 
 const filePathFor = (messageId) => path.join(UPLOAD_DIR, `msg-${messageId}`);
 
+/**
+ * عکس پروفایل با پیشوند avatar- ذخیره می‌شود، نه msg-. پاکسازی دوره‌ای فقط
+ * فایل‌های msg- را برمی‌دارد، پس عکس پروفایل‌ها مثل خود حساب‌ها باقی می‌مانند.
+ */
+const avatarPathFor = (userId) => path.join(UPLOAD_DIR, `avatar-${userId}`);
+
+function setUserAvatar(userId, buffer) {
+  fs.writeFileSync(avatarPathFor(userId), buffer);
+  const now = Date.now();
+  db.prepare('UPDATE users SET avatar_at = ? WHERE id = ?').run(now, userId);
+  return getUserById(userId);
+}
+
+function removeUserAvatar(userId) {
+  fs.rmSync(avatarPathFor(userId), { force: true });
+  db.prepare('UPDATE users SET avatar_at = NULL WHERE id = ?').run(userId);
+  return getUserById(userId);
+}
+
 function removeFileOf(messageId) {
   fs.rmSync(filePathFor(messageId), { force: true });
 }
@@ -392,6 +416,18 @@ function markRead(conversationId, userId, messageId) {
 }
 
 /* ------------------------------ statistics ---------------------------- */
+
+/** شناسه‌ی همه‌ی کسانی که با این کاربر دست‌کم یک گفتگوی مشترک دارند. */
+function peerIdsOf(userId) {
+  return db
+    .prepare(
+      `SELECT DISTINCT other.user_id AS id FROM members mine
+       JOIN members other ON other.conversation_id = mine.conversation_id
+       WHERE mine.user_id = ? AND other.user_id != ?`
+    )
+    .all(userId, userId)
+    .map((r) => r.id);
+}
 
 function stats() {
   return {
@@ -441,7 +477,11 @@ module.exports = {
   deleteMessage,
   rawMessage,
   filePathFor,
+  avatarPathFor,
+  setUserAvatar,
+  removeUserAvatar,
   removeFileOf,
   markRead,
+  peerIdsOf,
   stats,
 };

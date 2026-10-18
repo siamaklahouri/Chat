@@ -9,7 +9,6 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const zlib = require('node:zlib');
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'messenger-test-'));
 process.env.DATA_DIR = TMP;
@@ -21,6 +20,7 @@ process.env.TURN_SECRET = 'secret-for-tests';
 
 const { server } = require('../server/index.js');
 const WebSocket = require('ws');
+const { pngBuffer } = require('./helpers/png.js');
 
 let base;
 const context = {};
@@ -55,40 +55,6 @@ async function call(path, { method = 'GET', body, token, raw } = {}) {
   return { status: res.status, body: await res.json().catch(() => ({})) };
 }
 
-/** یک PNG کوچک واقعی می‌سازد تا آپلود، تشخیص فرمت را رد کند. */
-function pngBuffer(width = 8, height = 6) {
-  const crcTable = [];
-  for (let n = 0; n < 256; n += 1) {
-    let c = n;
-    for (let k = 0; k < 8; k += 1) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-    crcTable[n] = c;
-  }
-  const crc32 = (buf) => {
-    let c = 0xffffffff;
-    for (const byte of buf) c = crcTable[(c ^ byte) & 0xff] ^ (c >>> 8);
-    return (c ^ 0xffffffff) >>> 0;
-  };
-  const chunk = (type, data) => {
-    const len = Buffer.alloc(4);
-    len.writeUInt32BE(data.length);
-    const body = Buffer.concat([Buffer.from(type), data]);
-    const crc = Buffer.alloc(4);
-    crc.writeUInt32BE(crc32(body));
-    return Buffer.concat([len, body, crc]);
-  };
-  const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(width, 0);
-  ihdr.writeUInt32BE(height, 4);
-  ihdr[8] = 8;
-  ihdr[9] = 6;
-  const raw = Buffer.alloc((width * 4 + 1) * height, 0x40);
-  return Buffer.concat([
-    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-    chunk('IHDR', ihdr),
-    chunk('IDAT', zlib.deflateSync(raw)),
-    chunk('IEND', Buffer.alloc(0)),
-  ]);
-}
 
 const openSocket = (token) =>
   new Promise((resolve, reject) => {
@@ -901,4 +867,81 @@ test('فایل نصبی اندروید از خود سرور سرو می‌شود
   assert.equal(res.headers.get('content-type'), 'application/vnd.android.package-archive');
   assert.match(res.headers.get('content-disposition') || '', /\.apk/);
   assert.ok((await res.arrayBuffer()).byteLength > 0);
+});
+
+/* ----------------------------- عکس پروفایل ----------------------------- */
+
+test('عکس پروفایل: آپلود، دیده شدن توسط مخاطب، و حذف', async () => {
+  const upload = async (token, buffer, filename = 'me.png', type = 'image/png') => {
+    const form = new FormData();
+    form.append('avatar', new Blob([buffer], { type }), filename);
+    const res = await fetch(`${base}/api/me/avatar`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: form,
+    });
+    return { status: res.status, body: await res.json().catch(() => ({})) };
+  };
+
+  // تا وقتی عکسی نگذاشته، avatarUrl خالی است
+  const before = await call('/api/me', { token: context.saraToken });
+  assert.equal(before.body.user.avatarUrl, null);
+
+  const added = await upload(context.saraToken, pngBuffer(24, 24));
+  assert.equal(added.status, 201);
+  assert.match(added.body.user.avatarUrl, /^\/api\/avatars\/\d+\?v=\d+$/);
+
+  // مدیر که با سارا گفتگو دارد باید عکس را ببیند
+  const sara = require('../server/store.js').getUserByUsername('sara');
+  const fileToken = (await call('/api/me', { token: context.adminToken })).body.fileToken;
+  const fetched = await fetch(
+    `${base}/api/avatars/${sara.id}?t=${encodeURIComponent(fileToken)}`
+  );
+  assert.equal(fetched.status, 200);
+  assert.equal(fetched.headers.get('x-content-type-options'), 'nosniff');
+  assert.ok((await fetched.arrayBuffer()).byteLength > 0);
+
+  // بدون هیچ نشستی، هیچ عکسی داده نمی‌شود
+  const anonymous = await fetch(`${base}/api/avatars/${sara.id}`);
+  assert.equal(anonymous.status, 401);
+
+  // فایلی که عکس نیست رد می‌شود، حتی اگر خودش را image/png جا بزند
+  const fake = await upload(context.saraToken, Buffer.from('<?php echo 1; ?>'), 'x.png');
+  assert.equal(fake.status, 400);
+
+  // حذف
+  const removed = await call('/api/me/avatar', { method: 'DELETE', token: context.saraToken });
+  assert.equal(removed.status, 200);
+  assert.equal(removed.body.user.avatarUrl, null);
+  const gone = await fetch(`${base}/api/avatars/${sara.id}?t=${encodeURIComponent(fileToken)}`);
+  assert.equal(gone.status, 404);
+});
+
+test('عکس پروفایل: پاکسازی دوره‌ای آن را برنمی‌دارد', async () => {
+  const store = require('../server/store.js');
+  const sara = store.getUserByUsername('sara');
+
+  const form = new FormData();
+  form.append('avatar', new Blob([pngBuffer(16, 16)], { type: 'image/png' }), 'me.png');
+  await fetch(`${base}/api/me/avatar`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${context.saraToken}` },
+    body: form,
+  });
+  assert.ok(fs.existsSync(store.avatarPathFor(sara.id)));
+
+  // پاکسازی فقط پیام‌ها و عکس‌های چت را می‌برد؛ حساب‌ها و عکس‌شان می‌مانند.
+  require('../server/cleanup.js').wipeMessages('test');
+  assert.ok(fs.existsSync(store.avatarPathFor(sara.id)), 'عکس پروفایل نباید پاک می‌شد');
+  assert.ok(store.getUserById(sara.id).avatar_at, 'نشانه‌ی عکس در پایگاه‌داده باید می‌ماند');
+});
+
+test('عکس پروفایل: با حذف کاربر، فایلش هم می‌رود', async () => {
+  const store = require('../server/store.js');
+  const sara = store.getUserByUsername('sara');
+  const avatarPath = store.avatarPathFor(sara.id);
+  assert.ok(fs.existsSync(avatarPath));
+
+  await call(`/api/admin/users/${sara.id}`, { method: 'DELETE', token: context.adminToken });
+  assert.ok(!fs.existsSync(avatarPath), 'فایل عکس نباید روی دیسک یتیم می‌ماند');
 });

@@ -239,7 +239,19 @@ button { cursor: pointer; }
   display: inline-grid; place-items: center;
   font-weight: 700; color: #fff; flex: none; font-size: 15px;
   background: var(--accent);
+  /* وقتی عکس پروفایل هست، همین المان پس‌زمینه‌اش می‌شود. خود border-radius
+     عکس را گرد می‌کند، پس overflow: hidden لازم نیست — و اگر بود، نقطه‌ی
+     سبزِ «آنلاین» که روی لبه می‌نشیند بریده می‌شد. */
+  background-size: cover;
+  background-position: center;
 }
+.avatar.has-photo { color: transparent; }
+
+.avatar-lg { width: 86px; height: 86px; font-size: 30px; }
+
+.avatar-editor { display: grid; justify-items: center; gap: 10px; }
+.avatar-editor-actions { display: flex; gap: 8px; }
+.avatar-editor-actions .btn { padding: 8px 14px; font-size: 13px; }
 .avatar-btn { border: 0; background: none; padding: 0; }
 .avatar.online::after {
   content: ''; position: absolute; inset-inline-end: 0; bottom: 0;

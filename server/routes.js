@@ -215,6 +215,71 @@ router.get(
   }
 );
 
+/* ----------------------------- عکس پروفایل ----------------------------- */
+
+const MAX_AVATAR_BYTES = Number(process.env.MAX_AVATAR_BYTES || 2 * 1024 * 1024);
+const uploadAvatar = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_AVATAR_BYTES, files: 1 },
+});
+
+/** به همه‌ی کسانی که با این کاربر گفتگو دارند می‌گوید عکسش عوض شد. */
+function announceProfile(user) {
+  const payload = store.publicUser(user);
+  hub.sendToUser(user.id, { type: 'me:updated', user: payload });
+  hub.sendToUsers(store.peerIdsOf(user.id), { type: 'user:updated', user: payload });
+}
+
+router.post(
+  '/me/avatar',
+  requireApproved,
+  rateLimit({ windowMs: 10 * 60_000, max: 10, scope: 'avatar', by: 'user', message: 'تعداد تغییر عکس پروفایل زیاد است.' }),
+  uploadAvatar.single('avatar'),
+  (req, res) => {
+    if (!req.file) return fail(res, 400, 'فایلی دریافت نشد.');
+
+    // همان بررسی بایت‌های آغازین عکس‌های چت: به نوع اعلام‌شده‌ی مرورگر
+    // اعتماد نمی‌کنیم، چون هر چیزی می‌تواند خودش را image/png جا بزند.
+    const info = sniff(req.file.buffer);
+    if (!info) return fail(res, 400, 'فقط عکس (JPEG، PNG، GIF یا WebP) پذیرفته می‌شود.');
+
+    let user;
+    try {
+      user = store.setUserAvatar(req.user.id, req.file.buffer);
+    } catch (err) {
+      console.error('[avatar] ذخیره ناموفق بود:', err);
+      return fail(res, 500, 'ذخیره عکس ناموفق بود.');
+    }
+
+    announceProfile(user);
+    res.status(201).json({ user: store.publicUser(user) });
+  }
+);
+
+router.delete('/me/avatar', requireApproved, (req, res) => {
+  const user = store.removeUserAvatar(req.user.id);
+  announceProfile(user);
+  res.json({ user: store.publicUser(user) });
+});
+
+/**
+ * عکس پروفایل دیگران. مثل بقیه‌ی فایل‌ها نشست یا توکن فایل لازم دارد، چون تگ
+ * <img> هدر نمی‌فرستد. اگر کاربر نباشد یا عکس نداشته باشد، هر دو ۴۰۴ یکسان
+ * می‌گیرند تا از همین مسیر نشود فهمید کدام شناسه‌ها کاربر واقعی‌اند.
+ */
+router.get('/avatars/:id', fileAuth, (req, res) => {
+  const id = Number(req.params.id);
+  const user = Number.isInteger(id) ? store.getUserById(id) : null;
+  const filePath = user?.avatar_at ? store.avatarPathFor(id) : null;
+  if (!filePath || !fs.existsSync(filePath)) return fail(res, 404, 'عکسی پیدا نشد.');
+
+  res.type('image/jpeg');
+  res.setHeader('Cache-Control', 'private, max-age=604800');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+  fs.createReadStream(filePath).pipe(res);
+});
+
 /* ------------------------------ تماس صوتی ------------------------------ */
 
 /**

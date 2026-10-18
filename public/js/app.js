@@ -5,6 +5,7 @@
   const $ = (id) => document.getElementById(id);
   const TOKEN_KEY = 'messenger.token';
   const MAX_IMAGE_EDGE = 1600; // عکس‌ها پیش از آپلود تا این اندازه کوچک می‌شوند
+  const AVATAR_EDGE = 512; // عکس پروفایل مربع و در این اندازه ذخیره می‌شود
   const IMAGE_QUALITY = 0.82;
 
   const state = {
@@ -81,9 +82,12 @@
     toast.timer = setTimeout(() => el.classList.add('is-hidden'), 3200);
   }
 
-  function paintAvatar(el, name, color, online) {
-    el.textContent = initials(name);
-    el.style.background = color || 'var(--accent)';
+  function paintAvatar(el, name, color, online, avatarUrl = null) {
+    // `background` را ست نمی‌کنیم چون شورتهند است و backgroundImage را پاک می‌کند.
+    el.style.backgroundColor = color || 'var(--accent)';
+    el.style.backgroundImage = avatarUrl ? `url("${fileUrl(avatarUrl)}")` : '';
+    el.textContent = avatarUrl ? '' : initials(name);
+    el.classList.toggle('has-photo', Boolean(avatarUrl));
     el.classList.toggle('online', Boolean(online));
   }
 
@@ -120,7 +124,8 @@
    * نشانی فایل با توکن کوتاه‌عمرِ مخصوص فایل ساخته می‌شود — نه با توکن نشست،
    * چون توکن نشست در لاگ و تاریخچه می‌نشیند و دسترسی کامل به حساب می‌دهد.
    */
-  const fileUrl = (url) => `${url}?t=${encodeURIComponent(state.fileToken || '')}`;
+  const fileUrl = (url) =>
+    `${url}${url.includes('?') ? '&' : '?'}t=${encodeURIComponent(state.fileToken || '')}`;
 
   /* -------------------------------- API -------------------------------- */
 
@@ -271,7 +276,13 @@
           </span>
         </span>`;
       const online = conv.type === 'direct' && conv.peer?.online;
-      paintAvatar(button.querySelector('.avatar'), conv.title, conv.avatarColor, online);
+      paintAvatar(
+        button.querySelector('.avatar'),
+        conv.title,
+        conv.avatarColor,
+        online,
+        conv.peer?.avatarUrl
+      );
       button.querySelector('.conversation-name').textContent = conv.title;
       button.querySelector('.conversation-top small').textContent = conv.lastMessage
         ? timeText(conv.lastMessage.createdAt)
@@ -314,7 +325,8 @@
       $('chatAvatar'),
       conv.title,
       conv.avatarColor,
-      conv.type === 'direct' && conv.peer?.online
+      conv.type === 'direct' && conv.peer?.online,
+      conv.peer?.avatarUrl
     );
     $('chatName').textContent = conv.title;
     $('chatStatus').textContent = chatStatusText(conv);
@@ -362,7 +374,13 @@
         const sender = conv.members.find((m) => m.id === message.senderId);
         const avatar = document.createElement('span');
         avatar.className = 'avatar row-avatar';
-        paintAvatar(avatar, senderName(message.senderId), sender?.avatarColor, false);
+        paintAvatar(
+          avatar,
+          senderName(message.senderId),
+          sender?.avatarColor,
+          false,
+          sender?.avatarUrl
+        );
         row.appendChild(avatar);
       }
 
@@ -989,6 +1007,30 @@
 
   $('cancelImage').addEventListener('click', clearImagePreview);
 
+  /**
+   * عکس پروفایل را مربع و کوچک می‌کند. برش از وسط انجام می‌شود تا صورت‌ها
+   * معمولاً سر جایشان بمانند، و خروجی JPEG است تا حجمش کم باشد.
+   */
+  async function prepareAvatar(file) {
+    const bitmap = await createImageBitmap(file).catch(() => null);
+    if (!bitmap) throw new Error('این فایل عکس نیست.');
+
+    const side = Math.min(bitmap.width, bitmap.height);
+    const sx = Math.round((bitmap.width - side) / 2);
+    const sy = Math.round((bitmap.height - side) / 2);
+    const out = Math.min(AVATAR_EDGE, side);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = out;
+    canvas.height = out;
+    canvas.getContext('2d').drawImage(bitmap, sx, sy, side, side, 0, 0, out, out);
+    bitmap.close?.();
+
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.86));
+    if (!blob) throw new Error('آماده‌سازی عکس ممکن نشد.');
+    return blob;
+  }
+
   function clearImagePreview() {
     if ($('imagePreviewImg').src.startsWith('blob:')) URL.revokeObjectURL($('imagePreviewImg').src);
     state.pendingImage = null;
@@ -1239,6 +1281,29 @@
         else toast(CALL_ERRORS[event.reason] || 'تماس برقرار نشد', true);
         break;
 
+      case 'user:updated': {
+        // یکی از مخاطب‌ها پروفایلش را عوض کرد؛ نسخه‌ی ما از او باید تازه شود.
+        let touched = false;
+        for (const conv of state.conversations.values()) {
+          const index = conv.members.findIndex((m) => m.id === event.user.id);
+          if (index === -1) continue;
+          conv.members[index] = { ...conv.members[index], ...event.user };
+          if (conv.peer?.id === event.user.id) {
+            conv.peer = { ...conv.peer, ...event.user };
+            conv.title = event.user.displayName;
+          }
+          touched = true;
+        }
+        if (touched) {
+          renderConversations();
+          if (state.activeId) {
+            renderChatHeader();
+            renderMessages({ keepScroll: true });
+          }
+        }
+        break;
+      }
+
       case 'me:updated':
         state.me = event.user;
         renderMe();
@@ -1440,8 +1505,8 @@
 
   /* ------------------------------ نمایش تماس ----------------------------- */
 
-  function showCallOverlay({ name, color, incoming }) {
-    paintAvatar($('callAvatar'), name, color || '#2563eb', false);
+  function showCallOverlay({ name, color, incoming, photo = null }) {
+    paintAvatar($('callAvatar'), name, color || '#2563eb', false, photo);
     $('callName').textContent = name;
     $('callAccept').classList.toggle('is-hidden', !incoming);
     $('callMute').classList.toggle('is-hidden', incoming);
@@ -1683,7 +1748,12 @@
       timer: null,
       pendingCandidates: [],
     };
-    showCallOverlay({ name: conv.title, color: conv.avatarColor, incoming: false });
+    showCallOverlay({
+      name: conv.title,
+      color: conv.avatarColor,
+      incoming: false,
+      photo: conv.peer?.avatarUrl,
+    });
     setCallState('در حال زنگ زدن…');
     if (!sendWs({ type: 'call:invite', conversationId: conv.id, video })) {
       teardownCall('ارتباط با سرور برقرار نیست.');
@@ -1806,6 +1876,7 @@
       conversationId: event.conversationId,
       peerName: event.from?.displayName || 'کاربر',
       peerColor: event.from?.avatarColor,
+      peerPhoto: event.from?.avatarUrl,
       pc: null,
       stream: null,
       timer: null,
@@ -1815,6 +1886,7 @@
       name: state.call.peerName,
       color: state.call.peerColor,
       incoming: true,
+      photo: state.call.peerPhoto,
     });
     setCallState(state.call.video ? 'تماس تصویری ورودی…' : 'تماس صوتی ورودی…');
     ring.start(true);
@@ -1880,7 +1952,13 @@
     row.innerHTML = `
       <span class="avatar"></span>
       <span class="user-row-main"><strong></strong><small class="muted"></small></span>`;
-    paintAvatar(row.querySelector('.avatar'), user.displayName, user.avatarColor, user.online);
+    paintAvatar(
+      row.querySelector('.avatar'),
+      user.displayName,
+      user.avatarColor,
+      user.online,
+      user.avatarUrl
+    );
     row.querySelector('strong').textContent = user.displayName;
     row.querySelector('small').replaceChildren(usernameTag(user.username));
     if (onClick) {
@@ -2026,8 +2104,86 @@
     });
   }
 
+  /** بخش عکس پروفایل در پنجره‌ی پروفایل: نمایش، انتخاب و حذف. */
+  function avatarEditor() {
+    const wrap = document.createElement('div');
+    wrap.className = 'avatar-editor';
+
+    const avatar = document.createElement('span');
+    avatar.className = 'avatar avatar-lg';
+
+    const file = document.createElement('input');
+    file.type = 'file';
+    file.accept = 'image/*';
+    file.className = 'is-hidden';
+
+    const pick = document.createElement('button');
+    pick.type = 'button';
+    pick.className = 'btn';
+
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'btn btn-danger';
+    remove.textContent = 'حذف عکس';
+
+    const paint = () => {
+      paintAvatar(avatar, state.me.displayName, state.me.avatarColor, false, state.me.avatarUrl);
+      pick.textContent = state.me.avatarUrl ? 'تغییر عکس' : 'انتخاب عکس';
+      remove.classList.toggle('is-hidden', !state.me.avatarUrl);
+    };
+    paint();
+
+    const busy = (on) => {
+      pick.disabled = on;
+      remove.disabled = on;
+    };
+
+    pick.addEventListener('click', () => file.click());
+    file.addEventListener('change', async () => {
+      const chosen = file.files?.[0];
+      file.value = '';
+      if (!chosen) return;
+      busy(true);
+      try {
+        const form = new FormData();
+        form.append('avatar', await prepareAvatar(chosen), 'avatar.jpg');
+        const data = await api('/me/avatar', { method: 'POST', body: form, raw: true });
+        state.me = data.user;
+        paint();
+        renderMe();
+        toast('عکس پروفایل به‌روز شد.');
+      } catch (err) {
+        toast(err.message, true);
+      } finally {
+        busy(false);
+      }
+    });
+
+    remove.addEventListener('click', async () => {
+      busy(true);
+      try {
+        const data = await api('/me/avatar', { method: 'DELETE' });
+        state.me = data.user;
+        paint();
+        renderMe();
+        toast('عکس پروفایل حذف شد.');
+      } catch (err) {
+        toast(err.message, true);
+      } finally {
+        busy(false);
+      }
+    });
+
+    const buttons = document.createElement('div');
+    buttons.className = 'avatar-editor-actions';
+    buttons.append(pick, remove);
+    wrap.append(avatar, buttons, file);
+    return wrap;
+  }
+
   function profileModal() {
     openModal('پروفایل', (body) => {
+      const photo = avatarEditor();
       const name = document.createElement('input');
       name.value = state.me.displayName;
       name.maxLength = 40;
@@ -2119,7 +2275,7 @@
       });
 
       body.append(
-        username, name, bio, save,
+        photo, username, name, bio, save,
         divider, currentPassword, newPassword, changePassword,
         notifyBtn, logout
       );
@@ -2137,7 +2293,7 @@
       heading.style.alignItems = 'center';
       const avatar = document.createElement('span');
       avatar.className = 'avatar';
-      paintAvatar(avatar, conv.title, conv.avatarColor, conv.peer?.online);
+      paintAvatar(avatar, conv.title, conv.avatarColor, conv.peer?.online, conv.peer?.avatarUrl);
       const text = document.createElement('div');
       text.innerHTML = '<strong></strong><br /><small class="muted"></small>';
       text.querySelector('strong').textContent = conv.title;
@@ -2272,7 +2428,7 @@
   }
 
   function renderMe() {
-    paintAvatar($('meAvatar'), state.me.displayName, state.me.avatarColor, true);
+    paintAvatar($('meAvatar'), state.me.displayName, state.me.avatarColor, true, state.me.avatarUrl);
     $('meName').textContent = state.me.displayName;
     $('adminLink').classList.toggle('is-hidden', !state.me.isAdmin);
   }
