@@ -2239,6 +2239,79 @@
     return el;
   }
 
+  /** کپی کردن متن، با پشتیبان برای مرورگرهایی که clipboard ندارند. */
+  async function copyText(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      const box = document.createElement('textarea');
+      box.value = text;
+      box.setAttribute('readonly', '');
+      box.style.position = 'fixed';
+      box.style.opacity = '0';
+      document.body.appendChild(box);
+      box.select();
+      let ok = false;
+      try {
+        ok = document.execCommand('copy');
+      } catch {
+        ok = false;
+      }
+      box.remove();
+      return ok;
+    }
+  }
+
+  /**
+   * شناسه‌ی من، با دکمه‌ی کپی. کل برنامه روی «پیدا کردن با نام کاربری دقیق»
+   * بنا شده، پس باید بشود آن را راحت به کسی داد.
+   */
+  function myHandleBox() {
+    const wrap = document.createElement('div');
+    wrap.className = 'handle-box';
+
+    const text = document.createElement('div');
+    text.className = 'handle-value';
+    text.appendChild(usernameTag(state.me.username));
+
+    const hint = document.createElement('small');
+    hint.className = 'muted';
+    hint.textContent = 'دیگران با همین شناسه شما را پیدا می‌کنند.';
+
+    const copy = document.createElement('button');
+    copy.type = 'button';
+    copy.className = 'btn';
+    copy.textContent = 'کپی';
+    copy.addEventListener('click', async () => {
+      const ok = await copyText(`@${state.me.username}`);
+      toast(ok ? 'شناسه کپی شد.' : 'کپی ممکن نشد؛ دستی انتخابش کنید.', !ok);
+    });
+
+    const actions = document.createElement('div');
+    actions.className = 'handle-actions';
+    actions.appendChild(copy);
+
+    if (navigator.share) {
+      const share = document.createElement('button');
+      share.type = 'button';
+      share.className = 'btn';
+      share.textContent = 'اشتراک‌گذاری';
+      share.addEventListener('click', () => {
+        navigator
+          .share({ title: '9chat', text: `شناسه‌ی من در 9chat: @${state.me.username}` })
+          .catch(() => {});
+      });
+      actions.appendChild(share);
+    }
+
+    const main = document.createElement('div');
+    main.className = 'handle-main';
+    main.append(text, hint);
+    wrap.append(main, actions);
+    return wrap;
+  }
+
   function usernameTag(username) {
     const bdi = document.createElement('bdi');
     bdi.textContent = `@${username}`;
@@ -2482,6 +2555,161 @@
     return wrap;
   }
 
+  /** نام خوانای دستگاه از روی User-Agent. */
+  function deviceName(userAgent) {
+    if (!userAgent) return 'دستگاه ناشناس';
+    const ua = userAgent.toLowerCase();
+    const platform = ua.includes('android')
+      ? 'اندروید'
+      : /iphone|ipad|ipod/.test(ua)
+        ? 'iOS'
+        : ua.includes('windows')
+          ? 'ویندوز'
+          : ua.includes('mac os')
+            ? 'مک'
+            : ua.includes('linux')
+              ? 'لینوکس'
+              : 'نامشخص';
+    const browser = ua.includes('firefox')
+      ? 'فایرفاکس'
+      : ua.includes('edg/')
+        ? 'اج'
+        : ua.includes('chrome')
+          ? 'کروم'
+          : ua.includes('safari')
+            ? 'سافاری'
+            : 'مرورگر';
+    return `${browser} روی ${platform}`;
+  }
+
+  /** فهرست دستگاه‌هایی که با این حساب وارد شده‌اند. */
+  function devicesSection() {
+    const wrap = document.createElement('div');
+    wrap.className = 'stack';
+    const list = document.createElement('div');
+    list.className = 'stack';
+    list.innerHTML = '<p class="muted">در حال بارگذاری…</p>';
+
+    const closeOthers = document.createElement('button');
+    closeOthers.className = 'btn btn-danger is-hidden';
+    closeOthers.textContent = 'بستن همه‌ی دستگاه‌های دیگر';
+
+    const draw = (sessions) => {
+      list.innerHTML = '';
+      for (const session of sessions) {
+        const row = document.createElement('div');
+        row.className = 'device-row';
+        const main = document.createElement('div');
+        main.className = 'device-main';
+        const title = document.createElement('strong');
+        title.textContent = deviceName(session.userAgent);
+        const when = document.createElement('small');
+        when.className = 'muted';
+        when.textContent = session.current
+          ? 'همین دستگاه'
+          : `آخرین فعالیت ${relativeTime(session.lastSeenAt)}`;
+        main.append(title, when);
+        row.appendChild(main);
+
+        if (!session.current) {
+          const close = document.createElement('button');
+          close.className = 'btn';
+          close.textContent = 'بستن';
+          close.addEventListener('click', async () => {
+            close.disabled = true;
+            try {
+              await api(`/me/sessions/${session.id}`, { method: 'DELETE' });
+              await load();
+              toast('دستگاه بسته شد.');
+            } catch (err) {
+              toast(err.message, true);
+              close.disabled = false;
+            }
+          });
+          row.appendChild(close);
+        }
+        list.appendChild(row);
+      }
+      closeOthers.classList.toggle('is-hidden', sessions.length < 2);
+    };
+
+    const load = async () => {
+      try {
+        const data = await api('/me/sessions');
+        draw(data.sessions);
+      } catch (err) {
+        list.innerHTML = '';
+        list.appendChild(Object.assign(document.createElement('p'), {
+          className: 'muted',
+          textContent: err.message,
+        }));
+      }
+    };
+
+    closeOthers.addEventListener('click', async () => {
+      if (!confirm('همه‌ی دستگاه‌های دیگر از حساب خارج شوند؟')) return;
+      closeOthers.disabled = true;
+      try {
+        const data = await api('/me/sessions/others', { method: 'DELETE' });
+        await load();
+        toast(`${fa(data.closed)} دستگاه بسته شد.`);
+      } catch (err) {
+        toast(err.message, true);
+      } finally {
+        closeOthers.disabled = false;
+      }
+    });
+
+    load();
+    wrap.append(list, closeOthers);
+    return wrap;
+  }
+
+  /** کاربرانی که بلاک کرده‌ام. */
+  function blockedSection() {
+    const wrap = document.createElement('div');
+    wrap.className = 'stack';
+    const list = document.createElement('div');
+    list.className = 'stack';
+
+    const draw = (users) => {
+      list.innerHTML = '';
+      if (users.length === 0) {
+        list.appendChild(Object.assign(document.createElement('p'), {
+          className: 'muted',
+          textContent: 'کسی را بلاک نکرده‌اید.',
+        }));
+        return;
+      }
+      for (const user of users) {
+        const row = userRow(user);
+        const undo = document.createElement('button');
+        undo.className = 'btn';
+        undo.textContent = 'رفع بلاک';
+        undo.addEventListener('click', async (event) => {
+          event.stopPropagation();
+          undo.disabled = true;
+          try {
+            const data = await api(`/me/blocks/${user.id}`, { method: 'DELETE' });
+            draw(data.users);
+            toast('رفع بلاک شد.');
+          } catch (err) {
+            toast(err.message, true);
+            undo.disabled = false;
+          }
+        });
+        row.appendChild(undo);
+        list.appendChild(row);
+      }
+    };
+
+    api('/me/blocks')
+      .then((data) => draw(data.users))
+      .catch(() => draw([]));
+    wrap.appendChild(list);
+    return wrap;
+  }
+
   function profileModal() {
     openModal('پروفایل', (body) => {
       const photo = avatarEditor();
@@ -2492,10 +2720,6 @@
       bio.value = state.me.bio || '';
       bio.placeholder = 'درباره من';
       bio.maxLength = 200;
-
-      const username = document.createElement('p');
-      username.className = 'muted';
-      username.replaceChildren(usernameTag(state.me.username));
 
       const save = document.createElement('button');
       save.className = 'btn btn-primary';
@@ -2574,7 +2798,7 @@
 
       body.append(
         photo,
-        username,
+        myHandleBox(),
         labeled('نام نمایشی', name, 'همین نامی که دیگران می‌بینند.'),
         labeled('درباره‌ی من', bio),
         save,
@@ -2582,6 +2806,10 @@
         labeled('رمز فعلی', currentPassword),
         labeled('رمز تازه', newPassword, 'حداقل ۸ نویسه.'),
         changePassword,
+        sectionTitle('دستگاه‌های واردشده'),
+        devicesSection(),
+        sectionTitle('کاربران بلاک‌شده'),
+        blockedSection(),
         sectionTitle('سایر'),
         notifyBtn,
         logout
@@ -2739,6 +2967,25 @@
         bio.className = 'muted';
         bio.textContent = conv.peer.bio;
         body.appendChild(bio);
+      }
+
+      if (conv.type === 'direct' && conv.peer) {
+        const block = document.createElement('button');
+        block.className = 'btn btn-danger';
+        block.textContent = '🚫 بلاک کردن این کاربر';
+        block.addEventListener('click', async () => {
+          if (!confirm(`${conv.peer.displayName} بلاک شود؟ دیگر نمی‌توانید به هم پیام بدهید.`)) return;
+          block.disabled = true;
+          try {
+            await api('/me/blocks', { method: 'POST', body: { username: conv.peer.username } });
+            closeModal();
+            toast('کاربر بلاک شد. از پروفایل می‌توانید رفع بلاکش کنید.');
+          } catch (err) {
+            toast(err.message, true);
+            block.disabled = false;
+          }
+        });
+        body.appendChild(block);
       }
 
       const removeChat = document.createElement('button');
@@ -2913,6 +3160,15 @@
     showWipeInfo();
     requestNotificationPermission();
   }
+
+  $('forgotPassword').addEventListener('click', (event) => {
+    event.preventDefault();
+    setAuthMessage(
+      '9chat ایمیل و شماره‌ی شما را نمی‌گیرد، پس بازیابی خودکار رمز ممکن نیست. ' +
+        'از مدیر بخواهید از پنل مدیریت برایتان رمز تازه بگذارد.',
+      ''
+    );
+  });
 
   // دکمه‌ی چشم کنار کادرهای رمز
   for (const button of document.querySelectorAll('.reveal-password')) {

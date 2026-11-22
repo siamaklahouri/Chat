@@ -7,8 +7,13 @@ const {
   createSession,
   createFileToken,
   destroySession,
+  listSessions,
+  revokeSession,
+  touchSession,
+  revokeOtherSessions,
   requireAuth,
   requireApproved,
+  tokenFromRequest,
   userForToken,
   userIdFromFileToken,
   verifyPassword,
@@ -124,7 +129,7 @@ router.post(
       message: 'ثبت‌نام انجام شد. پس از تایید مدیر می‌توانید وارد شوید.',
     });
   }
-  const { token } = createSession(user.id);
+  const { token } = createSession(user.id, req.get('user-agent'));
   setSessionCookie(req, res, token);
   res.status(201).json({ token, user: payload, pending: false, fileToken: createFileToken(user.id) });
   }
@@ -164,7 +169,7 @@ router.post('/auth/login', (req, res) => {
   loginByIp.reset(ipKey);
   loginByUser.reset(userKey);
   store.touchUser(user.id);
-  const { token } = createSession(user.id);
+  const { token } = createSession(user.id, req.get('user-agent'));
   setSessionCookie(req, res, token);
   res.json({ token, user: store.publicUser(user), fileToken: createFileToken(user.id) });
 });
@@ -178,6 +183,9 @@ router.post('/auth/logout', requireAuth, (req, res) => {
 /* ---------------------------------- me --------------------------------- */
 
 router.get('/me', requireAuth, (req, res) => {
+  // آخرین فعالیت این دستگاه، برای فهرست دستگاه‌ها. اینجا ثبت می‌شود و نه در
+  // هر درخواست، تا هر کلیک یک نوشتن روی پایگاه‌داده نباشد.
+  touchSession(tokenFromRequest(req));
   res.json({ user: store.publicUser(req.user), fileToken: createFileToken(req.user.id) });
 });
 
@@ -210,7 +218,7 @@ router.post(
   // تغییر رمز همه‌ی نشست‌ها را باطل می‌کند (یعنی دستگاه‌های دیگر بیرون می‌افتند)،
   // پس برای همین دستگاه یک نشست تازه می‌سازیم تا کاربر بیرون پرت نشود.
   store.setUserPassword(req.user.id, newPassword);
-  const { token } = createSession(req.user.id);
+  const { token } = createSession(req.user.id, req.get('user-agent'));
   setSessionCookie(req, res, token);
   res.json({ token, message: 'رمز عبور عوض شد. دستگاه‌های دیگر باید دوباره وارد شوند.' });
   }
@@ -293,6 +301,57 @@ router.get('/avatars/:id', fileAuth, (req, res) => {
   fs.createReadStream(filePath).pipe(res);
 });
 
+/* ----------------------- دستگاه‌ها و بلاک کردن ----------------------- */
+
+/** دستگاه‌هایی که با این حساب وارد شده‌اند. توکنشان هیچ‌وقت برنمی‌گردد. */
+router.get('/me/sessions', requireApproved, (req, res) => {
+  res.json({ sessions: listSessions(req.user.id, tokenFromRequest(req)) });
+});
+
+/** بستن یک دستگاه. */
+router.delete('/me/sessions/:id', requireApproved, (req, res) => {
+  const current = tokenFromRequest(req);
+  const id = String(req.params.id);
+
+  if (id === 'others') {
+    const closed = revokeOtherSessions(req.user.id, current);
+    // فقط سوکت دستگاه‌های دیگر؛ نشست خودمان باید باز بماند.
+    if (closed > 0) hub.disconnectOtherSessions(req.user.id, current);
+    return res.json({ closed });
+  }
+
+  const token = revokeSession(req.user.id, id);
+  if (!token) return fail(res, 404, 'این دستگاه پیدا نشد.');
+  hub.disconnectSession(req.user.id, token);
+  if (token === current) {
+    res.clearCookie('token');
+    return res.json({ closed: 1, self: true });
+  }
+  return res.json({ closed: 1 });
+});
+
+/** کاربرهایی که بلاک کرده‌ام. */
+router.get('/me/blocks', requireApproved, (req, res) => {
+  res.json({ users: store.listBlocked(req.user.id) });
+});
+
+router.post('/me/blocks', requireApproved, (req, res) => {
+  const handle = clean(req.body.username).replace(/^@/, '');
+  if (!USERNAME_RE.test(handle)) return fail(res, 400, 'نام کاربری نامعتبر است.');
+  const target = store.getUserByUsername(handle);
+  if (!target || target.id === req.user.id) return fail(res, 404, 'کاربر پیدا نشد.');
+
+  store.blockUser(req.user.id, target.id);
+  return res.status(201).json({ users: store.listBlocked(req.user.id) });
+});
+
+router.delete('/me/blocks/:id', requireApproved, (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return fail(res, 400, 'شناسه نامعتبر است.');
+  store.unblockUser(req.user.id, id);
+  return res.json({ users: store.listBlocked(req.user.id) });
+});
+
 /* --------------------- سنجاق، بی‌صدا، جستجو، ری‌اکشن --------------------- */
 
 /** سنجاق و بی‌صدا فقط برای خود کاربر است؛ طرف مقابل خبردار نمی‌شود. */
@@ -350,6 +409,7 @@ router.post(
   requireApproved,
   rateLimit({ windowMs: 60_000, max: 30, scope: 'forward', by: 'user' }),
   memberGuard,
+  blockGuard,
   (req, res) => {
     const row = store.rawMessage(Number(req.body.messageId));
     if (!row || row.deleted_at) return fail(res, 404, 'پیام پیدا نشد.');
@@ -482,6 +542,22 @@ function memberGuard(req, res, next) {
   next();
 }
 
+/**
+ * جلوی فرستادن پیام در گفتگوی دونفره‌ای که بین دو طرفش بلاک هست را می‌گیرد.
+ * بلاک یک‌طرفه است ولی اثرش دوطرفه: کسی که بلاک شده هم نمی‌تواند پیام بدهد،
+ * وگرنه بلاک کردن بی‌معنی می‌شد. در گروه اثری ندارد.
+ */
+function blockGuard(req, res, next) {
+  const conv = store.getConversationRow(req.conversationId);
+  if (conv?.type !== 'direct') return next();
+
+  const peerId = store.memberIdsOf(conv.id).find((id) => id !== req.user.id);
+  if (peerId && store.blockedBetween(req.user.id, peerId)) {
+    return fail(res, 403, 'امکان ارسال پیام در این گفتگو نیست.', 'blocked');
+  }
+  return next();
+}
+
 router.get('/conversations/:id', requireApproved, memberGuard, (req, res) => {
   res.json({
     conversation: decorateConversation(store.conversationView(req.conversationId, req.user.id)),
@@ -514,6 +590,7 @@ router.post(
   requireApproved,
   rateLimit({ windowMs: 60_000, max: 90, scope: 'send', by: 'user', message: 'سرعت ارسال پیام زیاد است.' }),
   memberGuard,
+  blockGuard,
   (req, res) => {
   const body = clean(req.body.body);
   if (!body) return fail(res, 400, 'متن پیام خالی است.');
@@ -541,6 +618,7 @@ router.post(
   requireApproved,
   rateLimit({ windowMs: 10 * 60_000, max: 40, scope: 'upload', by: 'user', message: 'تعداد آپلود عکس زیاد است.' }),
   memberGuard,
+  blockGuard,
   upload.single('image'),
   (req, res) => {
     if (!req.file) return fail(res, 400, 'فایلی دریافت نشد.');
@@ -607,6 +685,7 @@ router.post(
   requireApproved,
   rateLimit({ windowMs: 10 * 60_000, max: 60, scope: 'voice', by: 'user', message: 'تعداد پیام صوتی زیاد است.' }),
   memberGuard,
+  blockGuard,
   uploadVoice.single('voice'),
   (req, res) => {
     if (!req.file) return fail(res, 400, 'فایلی دریافت نشد.');

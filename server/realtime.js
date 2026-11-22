@@ -75,15 +75,39 @@ class Hub {
 
   /** Closes every live socket of a user, e.g. after an admin blocks them. */
   disconnectUser(userId, code = 4003, reason = 'session-revoked') {
+    this.disconnectWhere(userId, () => true, code, reason);
+  }
+
+  /**
+   * بستن سوکت‌هایی که شرط را دارند.
+   *
+   * وقتی کاربر یک «دستگاه» را می‌بندد، فقط سوکت همان نشست باید برود. بستن
+   * همه‌ی سوکت‌های آن کاربر یعنی خودش هم از حساب بیرون می‌افتد.
+   */
+  disconnectWhere(userId, matches, code = 4001, reason = 'session-revoked') {
     const set = this.clients.get(userId);
-    if (!set) return;
+    if (!set) return 0;
+    let closed = 0;
     for (const socket of [...set]) {
+      if (!matches(socket)) continue;
       try {
         socket.close(code, reason);
+        closed += 1;
       } catch {
         /* already gone */
       }
     }
+    return closed;
+  }
+
+  /** سوکت‌های یک نشست مشخص. */
+  disconnectSession(userId, token) {
+    return this.disconnectWhere(userId, (socket) => socket.sessionToken === token);
+  }
+
+  /** همه‌ی سوکت‌ها جز نشست جاری. */
+  disconnectOtherSessions(userId, keepToken) {
+    return this.disconnectWhere(userId, (socket) => socket.sessionToken !== keepToken);
   }
 
   /** Notifies everyone sharing a conversation with this user that presence changed. */
@@ -274,6 +298,8 @@ function attach(server) {
     }
 
     socket.userId = user.id;
+    // کدام نشست این سوکت را باز کرده؛ برای بستنِ «یک دستگاه» لازم است.
+    socket.sessionToken = url.searchParams.get('token');
     socket.isAlive = true;
     const becameOnline = hub.add(user.id, socket);
     store.touchUser(user.id);

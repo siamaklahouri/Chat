@@ -461,6 +461,42 @@ function removeFileOf(messageId) {
   fs.rmSync(filePathFor(messageId), { force: true });
 }
 
+/* -------------------------------- بلاک -------------------------------- */
+
+/**
+ * بلاک یک‌طرفه است و فقط جلوی پیام دادن را می‌گیرد: گفتگوی قبلی پاک نمی‌شود
+ * و طرف مقابل خبردار نمی‌شود که بلاک شده — همان رفتاری که پیام‌رسان‌ها دارند.
+ */
+function blockUser(blockerId, blockedId) {
+  db.prepare(
+    'INSERT OR IGNORE INTO blocks (blocker_id, blocked_id, created_at) VALUES (?, ?, ?)'
+  ).run(blockerId, blockedId, Date.now());
+}
+
+function unblockUser(blockerId, blockedId) {
+  db.prepare('DELETE FROM blocks WHERE blocker_id = ? AND blocked_id = ?').run(blockerId, blockedId);
+}
+
+const hasBlocked = (blockerId, blockedId) =>
+  Boolean(
+    db
+      .prepare('SELECT 1 FROM blocks WHERE blocker_id = ? AND blocked_id = ?')
+      .get(blockerId, blockedId)
+  );
+
+/** آیا بین این دو نفر بلاکی هست (در هر جهت)؟ */
+const blockedBetween = (a, b) => hasBlocked(a, b) || hasBlocked(b, a);
+
+function listBlocked(userId) {
+  return db
+    .prepare(
+      `SELECT u.* FROM blocks b JOIN users u ON u.id = b.blocked_id
+       WHERE b.blocker_id = ? ORDER BY b.created_at DESC`
+    )
+    .all(userId)
+    .map(publicUser);
+}
+
 /* ------------------------------ ری‌اکشن ------------------------------ */
 
 /** ری‌اکشن‌های یک دسته پیام: { messageId: [{ emoji, count, mine }] } */
@@ -614,6 +650,11 @@ module.exports = {
   removeFileOf,
   markRead,
   setConversationFlags,
+  blockUser,
+  unblockUser,
+  hasBlocked,
+  blockedBetween,
+  listBlocked,
   reactionsFor,
   withReactions,
   toggleReaction,

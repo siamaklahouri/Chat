@@ -10,13 +10,61 @@ const FILE_TOKEN_TTL_MS = 1000 * 60 * 60 * 24;   // 24 ساعت
 const hashPassword = (plain) => bcrypt.hashSync(plain, 10);
 const verifyPassword = (plain, hash) => bcrypt.compareSync(plain, hash);
 
-function createSession(userId) {
+function createSession(userId, userAgent = null) {
   const token = crypto.randomBytes(32).toString('hex');
   const now = Date.now();
   db.prepare(
-    'INSERT INTO sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)'
-  ).run(token, userId, now, now + SESSION_TTL_MS);
+    `INSERT INTO sessions (token, user_id, created_at, expires_at, user_agent, last_seen_at)
+     VALUES (?, ?, ?, ?, ?, ?)`
+  ).run(token, userId, now, now + SESSION_TTL_MS, userAgent ? String(userAgent).slice(0, 300) : null, now);
   return { token, expiresAt: now + SESSION_TTL_MS };
+}
+
+/**
+ * دستگاه‌هایی که با این حساب وارد شده‌اند.
+ *
+ * خودِ توکن هیچ‌وقت برنگردانده نمی‌شود — فقط یک شناسه‌ی کوتاه که از آن ساخته
+ * شده، تا بشود نشستی را بست بدون اینکه خواندنِ فهرست، دسترسی بدهد.
+ */
+const shortId = (token) => crypto.createHash('sha256').update(token).digest('hex').slice(0, 16);
+
+function listSessions(userId, currentToken) {
+  return db
+    .prepare(
+      'SELECT token, created_at, expires_at, user_agent, last_seen_at FROM sessions WHERE user_id = ? ORDER BY last_seen_at DESC'
+    )
+    .all(userId)
+    .map((row) => ({
+      id: shortId(row.token),
+      current: row.token === currentToken,
+      userAgent: row.user_agent,
+      createdAt: row.created_at,
+      lastSeenAt: row.last_seen_at,
+      expiresAt: row.expires_at,
+    }));
+}
+
+/** بستن یک نشست با شناسه‌ی کوتاهش. فقط نشست‌های خود کاربر. */
+function revokeSession(userId, id) {
+  const row = db
+    .prepare('SELECT token FROM sessions WHERE user_id = ?')
+    .all(userId)
+    .find((r) => shortId(r.token) === id);
+  if (!row) return null;
+  db.prepare('DELETE FROM sessions WHERE token = ?').run(row.token);
+  return row.token;
+}
+
+/** بستن همه‌ی نشست‌ها جز همین یکی. */
+function revokeOtherSessions(userId, currentToken) {
+  const info = db
+    .prepare('DELETE FROM sessions WHERE user_id = ? AND token != ?')
+    .run(userId, currentToken);
+  return Number(info.changes || 0);
+}
+
+function touchSession(token) {
+  db.prepare('UPDATE sessions SET last_seen_at = ? WHERE token = ?').run(Date.now(), token);
 }
 
 function destroySession(token) {
@@ -134,6 +182,10 @@ module.exports = {
   verifyPassword,
   createSession,
   destroySession,
+  listSessions,
+  revokeSession,
+  revokeOtherSessions,
+  touchSession,
   userForToken,
   purgeExpiredSessions,
   tokenFromRequest,

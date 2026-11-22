@@ -195,6 +195,30 @@ button { cursor: pointer; }
 .btn-danger { background: rgba(239, 68, 68, .14); border-color: rgba(239, 68, 68, .35); color: var(--danger-soft); }
 .btn:disabled { opacity: .6; }
 .hint { color: var(--muted); font-size: 12px; text-align: center; margin: 0; }
+a.hint { text-decoration: none; }
+@media (hover: hover) { a.hint:hover { color: var(--text); text-decoration: underline; } }
+
+.stack { display: grid; gap: 8px; }
+
+/* شناسه‌ی من، با دکمه‌ی کپی */
+.handle-box {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px;
+  background: var(--bg-3);
+}
+.handle-main { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.handle-value { font-weight: 700; }
+.handle-actions { display: flex; gap: 6px; flex: none; }
+.handle-actions .btn { padding: 7px 12px; font-size: 13px; }
+
+/* فهرست دستگاه‌ها */
+.device-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 11px; border: 1px solid var(--line); border-radius: 12px;
+}
+.device-main { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.device-main small { font-size: 11px; }
+.device-row .btn { padding: 6px 12px; font-size: 13px; flex: none; }
 
 .auth-message { min-height: 20px; margin: 14px 0 0; text-align: center; font-size: 13px; }
 

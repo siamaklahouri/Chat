@@ -1185,3 +1185,125 @@ test('بازفرستادن پیام فقط بین گفتگوهای خود کار
   assert.equal(image.status, 201);
   assert.ok(fs.existsSync(store.filePathFor(image.body.message.id)), 'فایل عکس هم باید کپی می‌شد');
 });
+
+/* --------------------------- حساب و امنیت --------------------------- */
+
+test('دستگاه‌ها: فهرست بدون توکن، و بستن دستگاه دیگر', async () => {
+  // ورود دوم با همان حساب = دستگاه دوم
+  const second = await call('/api/auth/login', {
+    method: 'POST', body: { username: 'pin1', password: 'secret1234' },
+  });
+  assert.equal(second.status, 200);
+
+  const listed = await call('/api/me/sessions', { token: chat.pin1Token });
+  assert.equal(listed.status, 200);
+  assert.ok(listed.body.sessions.length >= 2);
+
+  // توکن واقعی هیچ‌وقت برنمی‌گردد
+  const serialized = JSON.stringify(listed.body);
+  assert.ok(!serialized.includes(chat.pin1Token), 'توکن نشست نباید در پاسخ باشد');
+  assert.ok(!serialized.includes(second.body.token), 'توکن نشست دیگر هم نباید لو برود');
+
+  const current = listed.body.sessions.filter((s) => s.current);
+  assert.equal(current.length, 1, 'فقط یکی باید «همین دستگاه» باشد');
+
+  // بستن دستگاه دیگر
+  const other = listed.body.sessions.find((s) => !s.current);
+  const closed = await call(`/api/me/sessions/${other.id}`, {
+    method: 'DELETE', token: chat.pin1Token,
+  });
+  assert.equal(closed.status, 200);
+
+  // آن توکن دیگر کار نمی‌کند، ولی مال خودمان کار می‌کند
+  const dead = await call('/api/me', { token: second.body.token });
+  assert.equal(dead.status, 401);
+  const alive = await call('/api/me', { token: chat.pin1Token });
+  assert.equal(alive.status, 200);
+
+  // کسی نمی‌تواند نشست دیگری را با حدس شناسه ببندد
+  const notMine = await call(`/api/me/sessions/${other.id}`, {
+    method: 'DELETE', token: chat.pin2Token,
+  });
+  assert.equal(notMine.status, 404);
+});
+
+test('بستن یک دستگاه، سوکت همان دستگاه را می‌بندد و نه مال ما را', async () => {
+  // دو سوکت با دو نشست متفاوت از یک حساب
+  const second = await call('/api/auth/login', {
+    method: 'POST', body: { username: 'pin1', password: 'secret1234' },
+  });
+  const mySocket = await openSocket(chat.pin1Token);
+  const otherSocket = await openSocket(second.body.token);
+
+  const closedOther = new Promise((resolve) => otherSocket.once('close', (code) => resolve(code)));
+  let mineClosed = false;
+  mySocket.once('close', () => {
+    mineClosed = true;
+  });
+
+  const sessions = await call('/api/me/sessions', { token: chat.pin1Token });
+  const target = sessions.body.sessions.find((s) => !s.current);
+  const done = await call(`/api/me/sessions/${target.id}`, {
+    method: 'DELETE', token: chat.pin1Token,
+  });
+  assert.equal(done.status, 200);
+
+  assert.equal(await closedOther, 4001, 'سوکت دستگاه بسته‌شده باید قطع شود');
+  await new Promise((r) => setTimeout(r, 300));
+  assert.equal(mineClosed, false, 'سوکت خودمان نباید بسته می‌شد');
+
+  mySocket.close();
+});
+
+test('بلاک: جلوی پیام را در هر دو جهت می‌گیرد و قابل برگشت است', async () => {
+  const blocked = await call('/api/me/blocks', {
+    method: 'POST', token: chat.pin1Token, body: { username: 'pin2' },
+  });
+  assert.equal(blocked.status, 201);
+  assert.equal(blocked.body.users.length, 1);
+  assert.equal(blocked.body.users[0].username, 'pin2');
+
+  // بلاک‌کننده نمی‌تواند پیام بدهد
+  const mine = await call(`/api/conversations/${chat.conversationId}/messages`, {
+    method: 'POST', token: chat.pin1Token, body: { body: 'سلام' },
+  });
+  assert.equal(mine.status, 403);
+  assert.equal(mine.body.code, 'blocked');
+
+  // و بلاک‌شده هم نمی‌تواند، وگرنه بلاک بی‌معنی بود
+  const theirs = await call(`/api/conversations/${chat.conversationId}/messages`, {
+    method: 'POST', token: chat.pin2Token, body: { body: 'چرا جواب نمی‌دهی' },
+  });
+  assert.equal(theirs.status, 403);
+
+  // عکس و صوت هم باید بسته باشند، نه فقط متن
+  const form = new FormData();
+  form.append('image', new Blob([pngBuffer(8, 8)], { type: 'image/png' }), 'x.png');
+  const image = await fetch(`${base}/api/conversations/${chat.conversationId}/images`, {
+    method: 'POST', headers: { Authorization: `Bearer ${chat.pin2Token}` }, body: form,
+  });
+  assert.equal(image.status, 403, 'مسیر عکس هم باید بلاک را رعایت کند');
+
+  // گفتگوی دیگر دست‌نخورده است
+  const elsewhere = await call('/api/conversations/direct', {
+    method: 'POST', token: chat.pin1Token, body: { username: 'pin3' },
+  });
+  const ok = await call(`/api/conversations/${elsewhere.body.conversation.id}/messages`, {
+    method: 'POST', token: chat.pin1Token, body: { body: 'این باید برود' },
+  });
+  assert.equal(ok.status, 201);
+
+  // رفع بلاک
+  const store = require('../server/store.js');
+  const pin2 = store.getUserByUsername('pin2');
+  const undone = await call(`/api/me/blocks/${pin2.id}`, {
+    method: 'DELETE', token: chat.pin1Token,
+  });
+  assert.equal(undone.status, 200);
+  assert.deepEqual(undone.body.users, []);
+
+  const again = await call(`/api/conversations/${chat.conversationId}/messages`, {
+    method: 'POST', token: chat.pin1Token, body: { body: 'دوباره سلام' },
+  });
+  assert.equal(again.status, 201);
+});

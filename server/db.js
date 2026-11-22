@@ -97,6 +97,8 @@ for (const [table, column, definition] of [
   ['members', 'pinned_at', 'INTEGER'],
   ['members', 'muted', 'INTEGER NOT NULL DEFAULT 0'],
   ['messages', 'forwarded', 'INTEGER NOT NULL DEFAULT 0'],
+  ['sessions', 'user_agent', 'TEXT'],
+  ['sessions', 'last_seen_at', 'INTEGER'],
 ]) {
   const existing = db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
   if (!existing.includes(column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
@@ -110,6 +112,13 @@ for (const [table, column, definition] of [
  * می‌شود تا اگر وسط کار چیزی خطا داد، داده‌ها دست‌نخورده بمانند.
  */
 db.exec(`
+  CREATE TABLE IF NOT EXISTS blocks (
+    blocker_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    blocked_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (blocker_id, blocked_id)
+  );
+
   CREATE TABLE IF NOT EXISTS reactions (
     message_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
     user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
