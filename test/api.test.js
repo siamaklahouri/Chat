@@ -1307,3 +1307,79 @@ test('بلاک: جلوی پیام را در هر دو جهت می‌گیرد و 
   });
   assert.equal(again.status, 201);
 });
+
+/* ----------------------------- پنل مدیریت ----------------------------- */
+
+test('پنل مدیریت: جستجو، صفحه‌بندی و گزارش کارها', async () => {
+  const store = require('../server/store.js');
+  for (let i = 0; i < 30; i += 1) {
+    store.createUser({
+      username: `bulk${i}`,
+      displayName: i % 2 === 0 ? `کاربر زوج ${i}` : `کاربر فرد ${i}`,
+      password: 'secret1234',
+      status: 'approved',
+    });
+  }
+
+  const first = await call('/api/admin/users?page=1', { token: context.adminToken });
+  assert.equal(first.status, 200);
+  assert.equal(first.body.users.length, first.body.pageSize);
+  assert.ok(first.body.total > first.body.pageSize, 'باید بیش از یک صفحه باشد');
+  assert.ok(first.body.pages > 1);
+
+  const second = await call('/api/admin/users?page=2', { token: context.adminToken });
+  const firstIds = new Set(first.body.users.map((u) => u.id));
+  assert.ok(
+    second.body.users.every((u) => !firstIds.has(u.id)),
+    'صفحه‌ی دوم نباید کاربران صفحه‌ی اول را تکرار کند'
+  );
+
+  // جستجو روی نام نمایشی و نام کاربری
+  const byName = await call(`/api/admin/users?q=${encodeURIComponent('کاربر زوج')}`, {
+    token: context.adminToken,
+  });
+  assert.ok(byName.body.total >= 15);
+  assert.ok(byName.body.users.every((u) => u.displayName.includes('زوج')));
+
+  const byHandle = await call('/api/admin/users?q=bulk1', { token: context.adminToken });
+  assert.ok(byHandle.body.users.every((u) => u.username.startsWith('bulk1')));
+
+  // نویسه‌های ویژه‌ی LIKE نباید مثل الگو رفتار کنند
+  const wildcard = await call('/api/admin/users?q=%25', { token: context.adminToken });
+  assert.equal(wildcard.body.total, 0, 'درصد باید نویسه‌ی معمولی باشد، نه الگو');
+
+  // جستجو با فیلتر وضعیت با هم کار می‌کنند
+  const combined = await call('/api/admin/users?q=bulk&status=blocked', {
+    token: context.adminToken,
+  });
+  assert.equal(combined.body.total, 0);
+});
+
+test('گزارش کار: کارهای مدیر ثبت می‌شود و نام بعد از حذف هم می‌ماند', async () => {
+  const store = require('../server/store.js');
+  const victim = store.createUser({
+    username: 'logged_out',
+    displayName: 'کاربر حذفی',
+    password: 'secret1234',
+    status: 'pending',
+  });
+
+  await call(`/api/admin/users/${victim.id}/status`, {
+    method: 'POST', token: context.adminToken, body: { status: 'approved' },
+  });
+  await call(`/api/admin/users/${victim.id}`, { method: 'DELETE', token: context.adminToken });
+
+  const log = await call('/api/admin/log', { token: context.adminToken });
+  assert.equal(log.status, 200);
+
+  const actions = log.body.entries.filter((e) => e.target === 'کاربر حذفی');
+  assert.ok(actions.some((e) => e.action === 'تایید کاربر'), 'تایید باید ثبت شده باشد');
+  assert.ok(actions.some((e) => e.action === 'حذف حساب'), 'حذف باید ثبت شده باشد');
+  // حساب رفته، ولی گزارش هنوز می‌گوید چه کسی چه کرد
+  assert.equal(store.getUserById(victim.id), null);
+  assert.ok(actions[0].actor, 'نام مدیرِ انجام‌دهنده باید باشد');
+
+  // کاربر عادی نباید گزارش را ببیند
+  const forbidden = await call('/api/admin/log', { token: chat.pin1Token });
+  assert.equal(forbidden.status, 403);
+});

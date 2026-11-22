@@ -121,15 +121,74 @@ const countAdmins = () => db.prepare('SELECT COUNT(*) AS c FROM users WHERE is_a
 const countPending = () =>
   db.prepare("SELECT COUNT(*) AS c FROM users WHERE status = 'pending'").get().c;
 
-function listUsers({ status } = {}) {
-  const rows = status
-    ? db.prepare('SELECT * FROM users WHERE status = ? ORDER BY created_at DESC').all(status)
-    : db.prepare('SELECT * FROM users ORDER BY created_at DESC').all();
-  return rows.map((row) => ({
-    ...publicUser(row),
-    createdAt: row.created_at,
-    reviewedAt: row.reviewed_at,
-  }));
+/**
+ * فهرست کاربران برای پنل مدیریت، با جستجو و صفحه‌بندی.
+ *
+ * اینجا برخلاف جستجوی کاربرانِ خود برنامه، جستجوی بخشی روی نام و نام کاربری
+ * مجاز است — مدیر به‌هرحال فهرست کامل را می‌بیند، پس چیزی لو نمی‌رود.
+ */
+function listUsers({ status, query = '', limit = 25, offset = 0 } = {}) {
+  const where = [];
+  const params = [];
+  if (status) {
+    where.push('status = ?');
+    params.push(status);
+  }
+  if (query) {
+    where.push('(username LIKE ? ESCAPE \'\\\' OR display_name LIKE ? ESCAPE \'\\\')');
+    const like = `%${query.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+    params.push(like, like);
+  }
+  const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+  const total = db.prepare(`SELECT COUNT(*) AS c FROM users ${clause}`).get(...params).c;
+  const rows = db
+    .prepare(`SELECT * FROM users ${clause} ORDER BY created_at DESC LIMIT ? OFFSET ?`)
+    .all(...params, limit, offset);
+
+  return {
+    total,
+    users: rows.map((row) => ({
+      ...publicUser(row),
+      createdAt: row.created_at,
+      reviewedAt: row.reviewed_at,
+    })),
+  };
+}
+
+/* --------------------------- گزارش کار مدیر --------------------------- */
+
+/**
+ * نام‌ها در لحظه‌ی ثبت کپی می‌شوند، نه فقط شناسه: اگر کاربری بعداً حذف شود،
+ * گزارش باید هنوز بگوید چه کسی چه کاری با چه کسی کرد.
+ */
+function logAdminAction({ actor, action, target = null, detail = null }) {
+  db.prepare(
+    `INSERT INTO admin_log (actor_id, actor_name, action, target_id, target_name, detail, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    actor?.id ?? null,
+    actor?.display_name || actor?.username || 'نامشخص',
+    action,
+    target?.id ?? null,
+    target ? target.display_name || target.username : null,
+    detail,
+    Date.now()
+  );
+}
+
+function listAdminLog(limit = 50) {
+  return db
+    .prepare('SELECT * FROM admin_log ORDER BY id DESC LIMIT ?')
+    .all(limit)
+    .map((row) => ({
+      id: row.id,
+      actor: row.actor_name,
+      action: row.action,
+      target: row.target_name,
+      detail: row.detail,
+      createdAt: row.created_at,
+    }));
 }
 
 /**
@@ -620,6 +679,8 @@ module.exports = {
   countAdmins,
   countPending,
   listUsers,
+  logAdminAction,
+  listAdminLog,
   findUserByHandle,
   getOrCreateDirect,
   createGroup,

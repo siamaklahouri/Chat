@@ -14,6 +14,9 @@
   // توکن کوتاه‌عمر فایل، برای نشان دادن عکس پروفایل کاربرها.
   let fileToken = null;
   let filter = '';
+  let search = '';
+  let page = 1;
+  let searchTimer = null;
   let currentUserId = null;
 
   const STATUS_LABEL = { pending: 'در انتظار تایید', approved: 'تاییدشده', blocked: 'مسدود' };
@@ -217,12 +220,72 @@
   }
 
   async function refresh() {
-    const [overview, users] = await Promise.all([
+    const params = new URLSearchParams();
+    if (filter) params.set('status', filter);
+    if (search) params.set('q', search);
+    params.set('page', String(page));
+
+    const [overview, users, log] = await Promise.all([
       api('/admin/overview'),
-      api(`/admin/users${filter ? `?status=${filter}` : ''}`),
+      api(`/admin/users?${params}`),
+      api('/admin/log').catch(() => ({ entries: [] })),
     ]);
     renderOverview(overview);
     renderUsers(users.users);
+    renderPager(users);
+    renderLog(log.entries);
+  }
+
+  function renderPager({ page: current, pages, total }) {
+    const pager = $('pager');
+    pager.classList.toggle('is-hidden', pages <= 1 && total <= 0);
+    $('pageInfo').textContent =
+      total === 0
+        ? 'کاربری پیدا نشد'
+        : `صفحه‌ی ${fa(current)} از ${fa(pages)} — ${fa(total)} کاربر`;
+    $('prevPage').disabled = current <= 1;
+    $('nextPage').disabled = current >= pages;
+  }
+
+  function renderLog(entries) {
+    const box = $('adminLog');
+    box.innerHTML = '';
+    if (entries.length === 0) {
+      box.innerHTML = '<p class="muted">هنوز کاری ثبت نشده است.</p>';
+      return;
+    }
+    for (const entry of entries) {
+      const row = document.createElement('div');
+      row.className = 'log-row';
+
+      const actor = document.createElement('b');
+      actor.textContent = entry.actor;
+      const what = document.createElement('span');
+      what.textContent = entry.action;
+      row.append(actor, what);
+
+      if (entry.target) {
+        const arrow = document.createElement('span');
+        arrow.className = 'muted';
+        arrow.textContent = '←';
+        const target = document.createElement('b');
+        target.textContent = entry.target;
+        row.append(arrow, target);
+      }
+      if (entry.detail) {
+        const detail = document.createElement('span');
+        detail.className = 'muted';
+        detail.textContent = `(${entry.detail})`;
+        row.appendChild(detail);
+      }
+
+      const when = document.createElement('time');
+      when.textContent = new Date(entry.createdAt).toLocaleString('fa-IR', {
+        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+      });
+      row.appendChild(when);
+      box.appendChild(row);
+    }
   }
 
   document.querySelectorAll('[data-filter]').forEach((chip) => {
@@ -230,8 +293,26 @@
       document.querySelectorAll('[data-filter]').forEach((c) => c.classList.remove('is-active'));
       chip.classList.add('is-active');
       filter = chip.dataset.filter;
+      page = 1; // فیلتر تازه یعنی از صفحه‌ی اول
       await refresh().catch((err) => toast(err.message, true));
     });
+  });
+
+  $('userSearch').addEventListener('input', (event) => {
+    search = event.target.value.trim();
+    page = 1;
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => refresh().catch((err) => toast(err.message, true)), 300);
+  });
+
+  $('prevPage').addEventListener('click', async () => {
+    if (page > 1) page -= 1;
+    await refresh().catch((err) => toast(err.message, true));
+  });
+
+  $('nextPage').addEventListener('click', async () => {
+    page += 1;
+    await refresh().catch((err) => toast(err.message, true));
   });
 
   $('wipeBtn').addEventListener('click', async () => {

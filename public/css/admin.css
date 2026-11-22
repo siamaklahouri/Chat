@@ -59,3 +59,33 @@
 .tag.approved { color: var(--ok-soft); border-color: rgba(134, 239, 172, .4); }
 .tag.blocked { color: var(--danger-soft); border-color: rgba(239, 68, 68, .4); }
 .tag.admin { color: var(--author); border-color: rgba(147, 197, 253, .45); }
+
+/* جستجو، صفحه‌بندی و گزارش کار */
+
+.admin-search { position: relative; margin-bottom: 10px; }
+.admin-search svg {
+  position: absolute; inset-inline-start: 12px; top: 50%;
+  transform: translateY(-50%); color: var(--muted); pointer-events: none;
+}
+.admin-search input {
+  width: 100%; padding: 11px 14px; padding-inline-start: 38px;
+  background: var(--bg-3); border: 1px solid var(--line);
+  border-radius: 12px; outline: none; color: inherit;
+}
+.admin-search input:focus { border-color: var(--accent); }
+
+.pager {
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  margin-top: 12px;
+}
+.pager .btn { padding: 8px 16px; font-size: 13px; }
+.pager .btn:disabled { opacity: .45; }
+
+.admin-log { display: grid; gap: 6px; }
+.log-row {
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  padding: 9px 11px; border: 1px solid var(--line); border-radius: 10px;
+  font-size: 13px;
+}
+.log-row time { color: var(--muted); font-size: 11px; margin-inline-start: auto; }
+.log-row b { font-weight: 700; }

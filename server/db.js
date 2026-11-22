@@ -112,6 +112,18 @@ for (const [table, column, definition] of [
  * می‌شود تا اگر وسط کار چیزی خطا داد، داده‌ها دست‌نخورده بمانند.
  */
 db.exec(`
+  CREATE TABLE IF NOT EXISTS admin_log (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    actor_id   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    actor_name TEXT    NOT NULL,
+    action     TEXT    NOT NULL,
+    target_id  INTEGER,
+    target_name TEXT,
+    detail     TEXT,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_admin_log_time ON admin_log(id DESC);
+
   CREATE TABLE IF NOT EXISTS blocks (
     blocker_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     blocked_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
