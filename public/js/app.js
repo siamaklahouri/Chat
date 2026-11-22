@@ -282,7 +282,7 @@
         conv.title,
         conv.avatarColor,
         online,
-        conv.peer?.avatarUrl
+        conv.avatarUrl
       );
       button.querySelector('.conversation-name').textContent = conv.title;
       button.querySelector('.conversation-top small').textContent = conv.lastMessage
@@ -327,7 +327,7 @@
       conv.title,
       conv.avatarColor,
       conv.type === 'direct' && conv.peer?.online,
-      conv.peer?.avatarUrl
+      conv.avatarUrl
     );
     $('chatName').textContent = conv.title;
     $('chatStatus').textContent = chatStatusText(conv);
@@ -1282,6 +1282,12 @@
           renderMessages();
         }
         renderConversations();
+        break;
+      }
+
+      case 'conversation:updated': {
+        upsertConversation(event.conversation);
+        if (event.conversation.id === state.activeId) renderChatHeader();
         break;
       }
 
@@ -2395,6 +2401,112 @@
     });
   }
 
+  /** نام و عکس گروه — فقط برای سازنده. */
+  function groupEditor(conv) {
+    const wrap = document.createElement('div');
+    wrap.className = 'avatar-editor';
+
+    const avatar = document.createElement('span');
+    avatar.className = 'avatar avatar-lg';
+
+    const file = document.createElement('input');
+    file.type = 'file';
+    file.accept = 'image/*';
+    file.className = 'is-hidden';
+
+    const pick = document.createElement('button');
+    pick.type = 'button';
+    pick.className = 'btn';
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'btn btn-danger';
+    remove.textContent = 'حذف عکس';
+
+    let current = conv;
+    const paint = () => {
+      paintAvatar(avatar, current.title, current.avatarColor, false, current.avatarUrl);
+      pick.textContent = current.avatarUrl ? 'تغییر عکس گروه' : 'انتخاب عکس گروه';
+      remove.classList.toggle('is-hidden', !current.avatarUrl);
+    };
+    paint();
+
+    const apply = (conversation) => {
+      current = conversation;
+      upsertConversation(conversation);
+      if (conversation.id === state.activeId) renderChatHeader();
+      paint();
+    };
+
+    pick.addEventListener('click', () => file.click());
+    file.addEventListener('change', async () => {
+      const chosen = file.files?.[0];
+      file.value = '';
+      if (!chosen) return;
+      pick.disabled = true;
+      try {
+        const form = new FormData();
+        form.append('avatar', await prepareAvatar(chosen), 'group.jpg');
+        const data = await api(`/conversations/${conv.id}/avatar`, {
+          method: 'POST',
+          body: form,
+          raw: true,
+        });
+        apply(data.conversation);
+        toast('عکس گروه به‌روز شد.');
+      } catch (err) {
+        toast(err.message, true);
+      } finally {
+        pick.disabled = false;
+      }
+    });
+
+    remove.addEventListener('click', async () => {
+      remove.disabled = true;
+      try {
+        const data = await api(`/conversations/${conv.id}/avatar`, { method: 'DELETE' });
+        apply(data.conversation);
+        toast('عکس گروه حذف شد.');
+      } catch (err) {
+        toast(err.message, true);
+      } finally {
+        remove.disabled = false;
+      }
+    });
+
+    const name = document.createElement('input');
+    name.value = conv.title;
+    name.maxLength = 60;
+
+    const rename = document.createElement('button');
+    rename.className = 'btn';
+    rename.textContent = 'ذخیره‌ی نام';
+    rename.addEventListener('click', async () => {
+      const title = name.value.trim();
+      if (!title) return toast('نام گروه خالی است.', true);
+      rename.disabled = true;
+      try {
+        const data = await api(`/conversations/${conv.id}`, { method: 'PATCH', body: { title } });
+        apply(data.conversation);
+        toast('نام گروه به‌روز شد.');
+      } catch (err) {
+        toast(err.message, true);
+      } finally {
+        rename.disabled = false;
+      }
+    });
+
+    const buttons = document.createElement('div');
+    buttons.className = 'avatar-editor-actions';
+    buttons.append(pick, remove);
+
+    const rest = document.createElement('div');
+    rest.className = 'group-editor-fields';
+    rest.append(labeled('نام گروه', name), rename);
+
+    wrap.append(avatar, buttons, file, rest);
+    return wrap;
+  }
+
   function chatInfoModal() {
     const conv = state.conversations.get(state.activeId);
     if (!conv) return;
@@ -2406,7 +2518,7 @@
       heading.style.alignItems = 'center';
       const avatar = document.createElement('span');
       avatar.className = 'avatar';
-      paintAvatar(avatar, conv.title, conv.avatarColor, conv.peer?.online, conv.peer?.avatarUrl);
+      paintAvatar(avatar, conv.title, conv.avatarColor, conv.peer?.online, conv.avatarUrl);
       const text = document.createElement('div');
       text.innerHTML = '<strong></strong><br /><small class="muted"></small>';
       text.querySelector('strong').textContent = conv.title;
@@ -2447,14 +2559,44 @@
       });
 
       if (conv.type === 'group') {
+        // دکمه‌ها فقط برای سازنده‌ی گروه معنی دارند؛ سرور هم همین را الزام می‌کند.
+        const iAmOwner = conv.members.find((m) => m.id === state.me.id)?.role === 'owner';
+
+        if (iAmOwner) {
+          body.append(groupEditor(conv), sectionTitle('اعضا'));
+        }
+
         for (const member of conv.members) {
           const row = userRow(member);
           if (member.role === 'owner') row.querySelector('small').append(' — سازنده');
+          if (iAmOwner && member.id !== state.me.id) {
+            const kick = document.createElement('button');
+            kick.type = 'button';
+            kick.className = 'row-remove';
+            kick.title = 'حذف از گروه';
+            kick.setAttribute('aria-label', `حذف ${member.displayName} از گروه`);
+            kick.textContent = '✕';
+            kick.addEventListener('click', async (event) => {
+              event.stopPropagation();
+              if (!confirm(`${member.displayName} از گروه حذف شود؟`)) return;
+              kick.disabled = true;
+              try {
+                const data = await api(`/conversations/${conv.id}/members/${member.id}`, {
+                  method: 'DELETE',
+                });
+                upsertConversation(data.conversation);
+                closeModal();
+                toast('عضو حذف شد.');
+              } catch (err) {
+                toast(err.message, true);
+                kick.disabled = false;
+              }
+            });
+            row.appendChild(kick);
+          }
           body.appendChild(row);
         }
 
-        // دکمه فقط برای سازنده‌ی گروه معنی دارد؛ سرور هم همین را الزام می‌کند.
-        const iAmOwner = conv.members.find((m) => m.id === state.me.id)?.role === 'owner';
         if (iAmOwner) {
           const add = document.createElement('button');
           add.className = 'btn';

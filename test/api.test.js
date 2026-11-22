@@ -945,3 +945,96 @@ test('عکس پروفایل: با حذف کاربر، فایلش هم می‌ر�
   await call(`/api/admin/users/${sara.id}`, { method: 'DELETE', token: context.adminToken });
   assert.ok(!fs.existsSync(avatarPath), 'فایل عکس نباید روی دیسک یتیم می‌ماند');
 });
+
+/* ------------------------------ گروه‌ها ------------------------------ */
+
+test('گروه: فقط سازنده نام و عکس را عوض می‌کند و عضو حذف می‌کند', async () => {
+  const store = require('../server/store.js');
+
+  // سه کاربر تاییدشده لازم داریم. مستقیم ساخته می‌شوند، نه از مسیر ثبت‌نام:
+  // آن مسیر عمداً محدودیت نرخ دارد و این آزمون کاری به ثبت‌نام ندارد.
+  const tokens = {};
+  for (const [username, displayName] of [['gro1', 'سازنده'], ['gro2', 'عضو'], ['gro3', 'عضو دوم']]) {
+    store.createUser({ username, displayName, password: 'secret1234', status: 'approved' });
+    const login = await call('/api/auth/login', { method: 'POST', body: { username, password: 'secret1234' } });
+    assert.equal(login.status, 200, `ورود ${username} ناموفق بود`);
+    tokens[username] = login.body.token;
+  }
+  const ids = Object.fromEntries(['gro1', 'gro2', 'gro3'].map((u) => [u, store.getUserByUsername(u).id]));
+
+  const made = await call('/api/conversations/group', {
+    method: 'POST',
+    token: tokens.gro1,
+    body: { title: 'گروه اول', memberIds: [ids.gro2, ids.gro3] },
+  });
+  assert.equal(made.status, 201);
+  const groupId = made.body.conversation.id;
+  assert.equal(made.body.conversation.avatarUrl, null);
+
+  // عضو عادی نمی‌تواند نام را عوض کند
+  const refused = await call(`/api/conversations/${groupId}`, {
+    method: 'PATCH', token: tokens.gro2, body: { title: 'هرچی' },
+  });
+  assert.equal(refused.status, 403);
+
+  // سازنده می‌تواند
+  const renamed = await call(`/api/conversations/${groupId}`, {
+    method: 'PATCH', token: tokens.gro1, body: { title: 'گروه تازه' },
+  });
+  assert.equal(renamed.status, 200);
+  assert.equal(renamed.body.conversation.title, 'گروه تازه');
+
+  // عکس گروه
+  const form = new FormData();
+  form.append('avatar', new Blob([pngBuffer(32, 32)], { type: 'image/png' }), 'g.png');
+  const photo = await fetch(`${base}/api/conversations/${groupId}/avatar`, {
+    method: 'POST', headers: { Authorization: `Bearer ${tokens.gro1}` }, body: form,
+  });
+  assert.equal(photo.status, 201);
+  const withPhoto = await photo.json();
+  assert.match(withPhoto.conversation.avatarUrl, /^\/api\/conversations\/\d+\/avatar\?v=\d+$/);
+
+  // عضو گروه عکس را می‌بیند؛ کسی که عضو نیست نه
+  const memberToken = (await call('/api/me', { token: tokens.gro2 })).body.fileToken;
+  const seen = await fetch(`${base}/api/conversations/${groupId}/avatar?t=${encodeURIComponent(memberToken)}`);
+  assert.equal(seen.status, 200);
+
+  const outsiderToken = (await call('/api/me', { token: context.adminToken })).body.fileToken;
+  const hidden = await fetch(`${base}/api/conversations/${groupId}/avatar?t=${encodeURIComponent(outsiderToken)}`);
+  assert.equal(hidden.status, 404, 'غیرعضو نباید عکس گروه را ببیند');
+
+  // حذف عضو: فقط سازنده
+  const notAllowed = await call(`/api/conversations/${groupId}/members/${ids.gro3}`, {
+    method: 'DELETE', token: tokens.gro2,
+  });
+  assert.equal(notAllowed.status, 403);
+
+  const kicked = await call(`/api/conversations/${groupId}/members/${ids.gro3}`, {
+    method: 'DELETE', token: tokens.gro1,
+  });
+  assert.equal(kicked.status, 200);
+  assert.equal(kicked.body.conversation.memberCount, 2);
+  assert.ok(!store.isMember(groupId, ids.gro3));
+
+  // سازنده نمی‌تواند خودش را این‌طور حذف کند
+  const self = await call(`/api/conversations/${groupId}/members/${ids.gro1}`, {
+    method: 'DELETE', token: tokens.gro1,
+  });
+  assert.equal(self.status, 400);
+
+  // «خروج از گروه» هنوز کار می‌کند (نباید در دام مسیر :userId بیفتد)
+  const left = await call(`/api/conversations/${groupId}/members/me`, {
+    method: 'DELETE', token: tokens.gro2,
+  });
+  assert.equal(left.status, 200);
+  assert.ok(!store.isMember(groupId, ids.gro2));
+
+  // در گفتگوی دونفره هیچ‌کدام از این‌ها معنی ندارد
+  const direct = await call('/api/conversations/direct', {
+    method: 'POST', token: tokens.gro1, body: { username: 'gro3' },
+  });
+  const onDirect = await call(`/api/conversations/${direct.body.conversation.id}`, {
+    method: 'PATCH', token: tokens.gro1, body: { title: 'x' },
+  });
+  assert.equal(onDirect.status, 400);
+});

@@ -284,6 +284,12 @@ function conversationView(conversationId, viewerId) {
     title: conv.type === 'group' ? conv.title : peer ? peer.displayName : 'کاربر حذف‌شده',
     orphaned,
     avatarColor: conv.type === 'group' ? conv.avatar_color : peer ? peer.avatarColor : '#64748b',
+    avatarUrl:
+      conv.type === 'group'
+        ? conv.avatar_at
+          ? `/api/conversations/${conv.id}/avatar?v=${conv.avatar_at}`
+          : null
+        : peer?.avatarUrl || null,
     peer,
     members,
     memberCount: members.length,
@@ -391,6 +397,27 @@ const filePathFor = (messageId) => path.join(UPLOAD_DIR, `msg-${messageId}`);
  */
 const avatarPathFor = (userId) => path.join(UPLOAD_DIR, `avatar-${userId}`);
 
+/** عکس گروه هم مثل عکس پروفایل، بیرون از دایره‌ی پاکسازی دوره‌ای می‌ماند. */
+const groupAvatarPathFor = (conversationId) =>
+  path.join(UPLOAD_DIR, `group-${conversationId}`);
+
+function setGroupAvatar(conversationId, buffer) {
+  fs.writeFileSync(groupAvatarPathFor(conversationId), buffer);
+  db.prepare('UPDATE conversations SET avatar_at = ? WHERE id = ?').run(Date.now(), conversationId);
+  return getConversationRow(conversationId);
+}
+
+function removeGroupAvatar(conversationId) {
+  fs.rmSync(groupAvatarPathFor(conversationId), { force: true });
+  db.prepare('UPDATE conversations SET avatar_at = NULL WHERE id = ?').run(conversationId);
+  return getConversationRow(conversationId);
+}
+
+function renameGroup(conversationId, title) {
+  db.prepare('UPDATE conversations SET title = ? WHERE id = ?').run(title, conversationId);
+  return getConversationRow(conversationId);
+}
+
 function setUserAvatar(userId, buffer) {
   fs.writeFileSync(avatarPathFor(userId), buffer);
   const now = Date.now();
@@ -480,6 +507,10 @@ module.exports = {
   avatarPathFor,
   setUserAvatar,
   removeUserAvatar,
+  groupAvatarPathFor,
+  setGroupAvatar,
+  removeGroupAvatar,
+  renameGroup,
   removeFileOf,
   markRead,
   peerIdsOf,

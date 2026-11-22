@@ -262,6 +262,15 @@ button { cursor: pointer; }
 .avatar-editor { display: grid; justify-items: center; gap: 10px; }
 .avatar-editor-actions { display: flex; gap: 8px; }
 .avatar-editor-actions .btn { padding: 8px 14px; font-size: 13px; }
+.group-editor-fields { display: grid; gap: 10px; width: 100%; }
+
+/* دکمه‌ی حذف عضو، گوشه‌ی ردیف کاربر */
+.user-row { position: relative; }
+.row-remove {
+  border: 0; background: transparent; color: var(--muted);
+  width: 30px; height: 30px; border-radius: 8px; flex: none;
+}
+.row-remove:hover { background: rgba(239, 68, 68, .14); color: var(--danger-soft); }
 .avatar-btn { border: 0; background: none; padding: 0; }
 .avatar.online::after {
   content: ''; position: absolute; inset-inline-end: 0; bottom: 0;

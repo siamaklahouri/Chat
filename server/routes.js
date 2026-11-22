@@ -57,6 +57,19 @@ const withPresence = (user) => user && { ...user, online: hub.isOnline(user.id) 
 const decorateConversation = (conv) =>
   conv && { ...conv, peer: withPresence(conv.peer), members: conv.members.map(withPresence) };
 
+/**
+ * هر عضو نسخه‌ی خودش از گفتگو را می‌گیرد (شمارنده‌ی خوانده‌نشده و پیام آخر
+ * برای هر کس فرق دارد)، پس نمی‌شود یک پیام یکسان برای همه فرستاد.
+ */
+function announceConversation(conversationId) {
+  for (const memberId of store.memberIdsOf(conversationId)) {
+    hub.sendToUser(memberId, {
+      type: 'conversation:updated',
+      conversation: decorateConversation(store.conversationView(conversationId, memberId)),
+    });
+  }
+}
+
 /** پشت پراکسی HTTPS، کوکی نشست با پرچم Secure فرستاده می‌شود. */
 function setSessionCookie(req, res, token) {
   res.cookie('token', token, {
@@ -636,6 +649,125 @@ router.post('/conversations/:id/members', requireApproved, memberGuard, (req, re
   });
   hub.sendToConversation(conv.id, { type: 'message:new', message: system }, target.id);
   res.status(201).json({
+    conversation: decorateConversation(store.conversationView(conv.id, req.user.id)),
+  });
+});
+
+/** فقط سازنده‌ی گروه. در غیر این صورت پاسخ ۴۰۳ می‌دهد و undefined برمی‌گرداند. */
+function groupOwnerGuard(req, res) {
+  const conv = store.getConversationRow(req.conversationId);
+  if (!conv || conv.type !== 'group') {
+    fail(res, 400, 'این گفتگو گروه نیست.');
+    return null;
+  }
+  const me = store.membersOf(conv.id).find((m) => m.id === req.user.id);
+  if (me?.role !== 'owner') {
+    fail(res, 403, 'فقط سازنده‌ی گروه می‌تواند این کار را بکند.');
+    return null;
+  }
+  return conv;
+}
+
+/** تغییر نام گروه. */
+router.patch('/conversations/:id', requireApproved, memberGuard, (req, res) => {
+  const conv = groupOwnerGuard(req, res);
+  if (!conv) return undefined;
+
+  const title = clean(req.body.title);
+  if (!title || title.length > 60) return fail(res, 400, 'نام گروه باید بین ۱ تا ۶۰ نویسه باشد.');
+  if (title === conv.title) return res.json({ conversation: decorateConversation(store.conversationView(conv.id, req.user.id)) });
+
+  store.renameGroup(conv.id, title);
+  const system = store.createMessage({
+    conversationId: conv.id,
+    senderId: req.user.id,
+    kind: 'system',
+    body: `نام گروه به «${title}» تغییر کرد.`,
+  });
+  hub.sendToConversation(conv.id, { type: 'message:new', message: system });
+  announceConversation(conv.id);
+  return res.json({
+    conversation: decorateConversation(store.conversationView(conv.id, req.user.id)),
+  });
+});
+
+/** عکس گروه. */
+router.post(
+  '/conversations/:id/avatar',
+  requireApproved,
+  rateLimit({ windowMs: 10 * 60_000, max: 10, scope: 'group-avatar', by: 'user', message: 'تعداد تغییر عکس گروه زیاد است.' }),
+  memberGuard,
+  uploadAvatar.single('avatar'),
+  (req, res) => {
+    const conv = groupOwnerGuard(req, res);
+    if (!conv) return undefined;
+    if (!req.file) return fail(res, 400, 'فایلی دریافت نشد.');
+
+    const info = sniff(req.file.buffer);
+    if (!info) return fail(res, 400, 'فقط عکس (JPEG، PNG، GIF یا WebP) پذیرفته می‌شود.');
+
+    try {
+      store.setGroupAvatar(conv.id, req.file.buffer);
+    } catch (err) {
+      console.error('[group-avatar] ذخیره ناموفق بود:', err);
+      return fail(res, 500, 'ذخیره عکس ناموفق بود.');
+    }
+    announceConversation(conv.id);
+    return res.status(201).json({
+      conversation: decorateConversation(store.conversationView(conv.id, req.user.id)),
+    });
+  }
+);
+
+router.delete('/conversations/:id/avatar', requireApproved, memberGuard, (req, res) => {
+  const conv = groupOwnerGuard(req, res);
+  if (!conv) return undefined;
+  store.removeGroupAvatar(conv.id);
+  announceConversation(conv.id);
+  return res.json({
+    conversation: decorateConversation(store.conversationView(conv.id, req.user.id)),
+  });
+});
+
+router.get('/conversations/:id/avatar', fileAuth, (req, res) => {
+  const id = Number(req.params.id);
+  // عضو نبودن و نبودِ عکس هر دو ۴۰۴ یکسان می‌گیرند.
+  const conv = Number.isInteger(id) ? store.getConversationRow(id) : null;
+  const allowed = conv?.avatar_at && store.isMember(id, req.user.id);
+  const filePath = allowed ? store.groupAvatarPathFor(id) : null;
+  if (!filePath || !fs.existsSync(filePath)) return fail(res, 404, 'عکسی پیدا نشد.');
+
+  res.type('image/jpeg');
+  res.setHeader('Cache-Control', 'private, max-age=604800');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+  return fs.createReadStream(filePath).pipe(res);
+});
+
+/** حذف عضو از گروه توسط سازنده. */
+router.delete('/conversations/:id/members/:userId', requireApproved, memberGuard, (req, res, next) => {
+  // «me» مسیر خودش را دارد و پایین‌تر تعریف شده است.
+  if (req.params.userId === 'me') return next();
+  const conv = groupOwnerGuard(req, res);
+  if (!conv) return undefined;
+
+  const targetId = Number(req.params.userId);
+  if (!Number.isInteger(targetId)) return fail(res, 400, 'شناسه نامعتبر است.');
+  if (targetId === req.user.id) return fail(res, 400, 'سازنده نمی‌تواند خودش را حذف کند؛ از «خروج از گروه» استفاده کنید.');
+  if (!store.isMember(conv.id, targetId)) return fail(res, 404, 'این کاربر عضو گروه نیست.');
+
+  const target = store.getUserById(targetId);
+  store.removeMember(conv.id, targetId);
+  const system = store.createMessage({
+    conversationId: conv.id,
+    senderId: req.user.id,
+    kind: 'system',
+    body: `${target?.display_name || 'کاربر'} از گروه حذف شد.`,
+  });
+  hub.sendToConversation(conv.id, { type: 'message:new', message: system });
+  hub.sendToUser(targetId, { type: 'conversation:left', conversationId: conv.id });
+  announceConversation(conv.id);
+  return res.json({
     conversation: decorateConversation(store.conversationView(conv.id, req.user.id)),
   });
 });
