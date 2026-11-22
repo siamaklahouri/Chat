@@ -199,12 +199,22 @@ button { cursor: pointer; }
 .auth-message { min-height: 20px; margin: 14px 0 0; text-align: center; font-size: 13px; }
 
 .apk-link {
-  display: flex; align-items: center; justify-content: center; gap: 8px;
+  display: flex; align-items: center; gap: 10px;
   margin-top: 10px; padding: 11px 14px;
   border: 1px solid var(--line); border-radius: 12px;
-  color: var(--text); text-decoration: none; font-size: 14px; font-weight: 600;
+  color: var(--text); text-decoration: none; font-size: 14px;
 }
-.apk-link small { font-weight: 400; }
+.apk-link svg { color: var(--muted); flex: none; }
+.apk-text { display: grid; line-height: 1.35; }
+.apk-text small { font-weight: 400; direction: ltr; text-align: start; }
+
+/* کادر رمز، با دکمه‌ی چشم داخلش */
+.password-field { position: relative; display: block; }
+.password-field input { padding-inline-end: 44px; }
+.password-field .reveal-password {
+  position: absolute; inset-inline-end: 4px; top: 50%;
+  transform: translateY(-50%); width: 34px; height: 34px;
+}
 @media (hover: hover) { .apk-link:hover { border-color: var(--muted); } }
 .auth-message.error { color: var(--danger-soft); }
 .auth-message.ok { color: var(--ok-soft); }
@@ -287,7 +297,12 @@ button { cursor: pointer; }
   :root:not([data-theme='dark']) .theme-icon-dark { display: none; }
 }
 
-.search-row { padding: 10px 12px; }
+.search-row { padding: 10px 12px; position: relative; }
+.search-row svg {
+  position: absolute; inset-inline-start: 24px; top: 50%;
+  transform: translateY(-50%); color: var(--muted); pointer-events: none;
+}
+.search-row input { padding-inline-start: 38px; }
 
 .conversation-list { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 
@@ -325,7 +340,7 @@ html[dir='rtl'] .conversation.is-active { box-shadow: inset -3px 0 0 var(--accen
   text-align: center; color: var(--muted); gap: 6px; padding: 24px;
 }
 .empty-state p { margin: 0; max-width: 34ch; }
-.empty-mark { color: var(--line); margin-bottom: 6px; }
+.empty-mark { color: var(--muted); opacity: .35; margin-bottom: 6px; }
 .empty-title { color: var(--text); font-weight: 600; font-size: 16px; }
 
 .chat-header {
@@ -350,6 +365,10 @@ html[dir='rtl'] .conversation.is-active { box-shadow: inset -3px 0 0 var(--accen
     radial-gradient(900px 400px at 100% 0%, var(--list-glow), transparent 60%),
     var(--bg);
 }
+
+/* گفتگوی کوتاه باید از پایین پر شود، نه اینکه به سربرگ بچسبد و زیرش خالی
+   بماند. margin از justify-content امن‌تر است: اسکرول به بالا را خراب نمی‌کند. */
+.message-list > *:first-child { margin-block-start: auto; }
 
 .day-divider { align-self: center; margin: 10px 0; }
 .day-divider span {
@@ -407,6 +426,8 @@ html[dir='rtl'] .conversation.is-active { box-shadow: inset -3px 0 0 var(--accen
 
 .bubble-author { font-size: 12px; font-weight: 700; color: var(--author); margin-bottom: 2px; }
 .bubble-text { white-space: pre-wrap; }
+.bubble-link { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.message-row.theirs .bubble-link { color: var(--author); }
 .bubble-text.deleted { color: var(--muted); font-style: italic; }
 
 .bubble-reply {
@@ -562,10 +583,14 @@ html[dir='rtl'] .conversation.is-active { box-shadow: inset -3px 0 0 var(--accen
 .modal-body { padding: 14px; overflow-y: auto; display: grid; gap: 12px; }
 
 .modal-divider {
-  margin-top: 6px; padding-top: 12px;
+  margin-top: 10px; padding-top: 14px;
   border-top: 1px solid var(--line);
-  font-size: 13px; color: var(--muted);
+  font-size: 12px; font-weight: 700; color: var(--muted);
+  letter-spacing: .02em;
 }
+.modal-body .field > small { font-size: 11px; }
+/* پنجره‌ی بلند باید نشان بدهد که زیرش ادامه دارد. */
+.modal-body { scrollbar-gutter: stable both-edges; }
 
 .user-row {
   display: flex; align-items: center; gap: 10px; width: 100%;

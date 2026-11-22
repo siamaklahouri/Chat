@@ -24,6 +24,7 @@
     recordTimer: null,
     typingPeers: new Map(),
     missedWhileUp: 0,
+    stickToBottom: true,
     typingTimer: null,
     typingSentAt: 0,
     socket: null,
@@ -336,6 +337,41 @@
     $('videoCallBtn').classList.toggle('is-hidden', !callable);
   }
 
+  /**
+   * نشانی‌های داخل متن را به پیوند تبدیل می‌کند.
+   *
+   * با گره‌های DOM ساخته می‌شود و نه با innerHTML، تا متنی که کاربر فرستاده
+   * هیچ‌وقت به‌عنوان HTML اجرا نشود. فقط http و https پذیرفته می‌شوند؛ مثلاً
+   * javascript: پیوند نمی‌شود.
+   */
+  const URL_PATTERN = /(https?:\/\/[^\s<>"']+|(?:^|[\s(])www\.[^\s<>"']+)/gi;
+
+  function linkify(container, text) {
+    let last = 0;
+    for (const match of text.matchAll(URL_PATTERN)) {
+      // الگو ممکن است یک فاصله‌ی ابتدایی را هم گرفته باشد.
+      const lead = match[0].match(/^[\s(]/) ? match[0][0] : '';
+      const start = match.index + lead.length;
+      let raw = match[0].slice(lead.length);
+
+      // نقطه و پرانتز پایانی معمولاً نشانه‌گذاری جمله‌اند، نه بخشی از نشانی.
+      const trimmed = raw.replace(/[.,!?؛،)\]]+$/u, '');
+      const href = trimmed.startsWith('www.') ? `https://${trimmed}` : trimmed;
+
+      if (start > last) container.appendChild(document.createTextNode(text.slice(last, start)));
+      const link = document.createElement('a');
+      link.href = href;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer nofollow';
+      link.className = 'bubble-link';
+      link.textContent = trimmed;
+      container.appendChild(link);
+      last = start + trimmed.length;
+    }
+    if (last < text.length) container.appendChild(document.createTextNode(text.slice(last)));
+    return container;
+  }
+
   function senderName(senderId) {
     const conv = state.conversations.get(state.activeId);
     const member = conv?.members.find((m) => m.id === senderId);
@@ -414,14 +450,28 @@
       const button = document.createElement('button');
       button.className = 'bubble-image';
       button.type = 'button';
+      // اندازه را از قبل و به پیکسل می‌دهیم، نه فقط با نسبت ابعاد: حبابِ
+      // فقط-عکس عرض ذاتی ندارد، پس پیش از بار شدن عکس `width: 100%` تقریباً
+      // صفر می‌شود و هیچ فضایی رزرو نمی‌ماند — بعد عکس که می‌آید فهرست
+      // بلندتر می‌شود و کاربر وسط تاریخچه جا می‌ماند.
       const { width, height } = message.attachment;
-      // نسبت ابعاد را از قبل می‌دهیم تا موقع بارگذاری عکس، چیدمان نپرد.
-      if (width && height) button.style.aspectRatio = `${width} / ${height}`;
+      if (width && height) {
+        const maxWidth = Math.min(420, Math.round(window.innerWidth * 0.66));
+        const maxHeight = Math.round(window.innerHeight * 0.62);
+        const scale = Math.min(1, maxWidth / width, maxHeight / height);
+        button.style.width = `${Math.round(width * scale)}px`;
+        button.style.height = `${Math.round(height * scale)}px`;
+      } else {
+        // بدون ابعاد (عکس‌های قدیمی) دست‌کم یک جای پیش‌فرض نگه می‌داریم.
+        button.style.aspectRatio = '4 / 3';
+        button.style.width = '280px';
+      }
       const img = document.createElement('img');
       img.loading = 'lazy';
       img.decoding = 'async';
       img.alt = message.attachment.name || 'عکس';
       img.src = fileUrl(message.attachment.url);
+      keepPinnedAfterLoad(img);
       button.appendChild(img);
       button.addEventListener('click', () => openLightbox(message.attachment));
       bubble.appendChild(button);
@@ -434,7 +484,8 @@
     if (message.body || message.deleted) {
       const text = document.createElement('div');
       text.className = `bubble-text${message.deleted ? ' deleted' : ''}`;
-      text.textContent = message.deleted ? 'این پیام حذف شد' : message.body;
+      if (message.deleted) text.textContent = 'این پیام حذف شد';
+      else linkify(text, message.body);
       bubble.appendChild(text);
     }
 
@@ -645,10 +696,40 @@
     }
 
     if (keepScroll) list.scrollTop = list.scrollHeight - previousHeight + previousTop;
-    else if (stick) list.scrollTop = list.scrollHeight;
+    else if (stick) pinToBottom(list);
     else list.scrollTop = previousTop;
 
     updateJumpButton();
+  }
+
+  /**
+   * پریدن به انتهای فهرست، بدون انیمیشن.
+   *
+   * نوشتن مستقیم روی scrollTop وقتی `scroll-behavior: smooth` است، در کروم
+   * یک حرکت نرم راه می‌اندازد؛ اگر در همان فاصله عکسی بار شود و ارتفاع فهرست
+   * بلندتر شود، حرکت روی مقصدِ قدیمی تمام می‌کند و کاربر وسط تاریخچه می‌ماند.
+   */
+  function pinToBottom(list) {
+    list.scrollTo({ top: list.scrollHeight, behavior: 'instant' });
+    state.stickToBottom = true;
+  }
+
+  /**
+   * عکسی که تازه بار شده ارتفاع فهرست را بلندتر می‌کند. اگر کاربر پایین بود،
+   * باید پایین بماند — وگرنه با هر عکس، آخرین پیام از دستش می‌رود.
+   */
+  function keepPinnedAfterLoad(img) {
+    img.addEventListener(
+      'load',
+      () => {
+        // به atBottom تکیه نمی‌کنیم: وقتی عکسِ قبلی فهرست را بلند کرده،
+        // همین حالا هم «پایین» نیستیم. نیت کاربر را نگه می‌داریم.
+        const list = $('messageList');
+        if (list && state.stickToBottom) pinToBottom(list);
+        updateJumpButton();
+      },
+      { once: true }
+    );
   }
 
   /** دکمه‌ی «رفتن به آخرین پیام»، فقط وقتی کاربر بالا رفته باشد. */
@@ -680,6 +761,7 @@
 
   async function openConversation(id) {
     state.activeId = id;
+    state.stickToBottom = true;
     state.messages = [];
     state.replyTo = null;
     state.editing = null;
@@ -1939,6 +2021,30 @@
   );
 
   /** نام کاربری لاتین را داخل <bdi> می‌گذارد تا در متن راست‌چین وارونه نشود. */
+  /** کادر ورودی به‌همراه برچسبش. */
+  function labeled(labelText, input, hint = '') {
+    const wrap = document.createElement('label');
+    wrap.className = 'field';
+    const label = document.createElement('span');
+    label.textContent = labelText;
+    wrap.append(label, input);
+    if (hint) {
+      const note = document.createElement('small');
+      note.className = 'muted';
+      note.textContent = hint;
+      wrap.appendChild(note);
+    }
+    return wrap;
+  }
+
+  /** عنوان یک بخش داخل پنجره. */
+  function sectionTitle(text) {
+    const el = document.createElement('div');
+    el.className = 'modal-divider';
+    el.textContent = text;
+    return el;
+  }
+
   function usernameTag(username) {
     const bdi = document.createElement('bdi');
     bdi.textContent = `@${username}`;
@@ -2026,7 +2132,8 @@
         }, 220);
       });
 
-      body.append(groupBtn, hint, search, results);
+      // کار اصلی پیدا کردن شخص است، پس اول جستجو می‌آید و گروه بعد از آن.
+      body.append(hint, search, results, groupBtn);
       search.focus();
     });
   }
@@ -2215,9 +2322,6 @@
       });
 
       // --- تغییر رمز ---
-      const divider = document.createElement('div');
-      divider.className = 'modal-divider';
-      divider.textContent = 'تغییر رمز عبور';
 
       const currentPassword = document.createElement('input');
       currentPassword.type = 'password';
@@ -2275,9 +2379,18 @@
       });
 
       body.append(
-        photo, username, name, bio, save,
-        divider, currentPassword, newPassword, changePassword,
-        notifyBtn, logout
+        photo,
+        username,
+        labeled('نام نمایشی', name, 'همین نامی که دیگران می‌بینند.'),
+        labeled('درباره‌ی من', bio),
+        save,
+        sectionTitle('تغییر رمز عبور'),
+        labeled('رمز فعلی', currentPassword),
+        labeled('رمز تازه', newPassword, 'حداقل ۸ نویسه.'),
+        changePassword,
+        sectionTitle('سایر'),
+        notifyBtn,
+        logout
       );
     });
   }
@@ -2459,6 +2572,17 @@
     requestNotificationPermission();
   }
 
+  // دکمه‌ی چشم کنار کادرهای رمز
+  for (const button of document.querySelectorAll('.reveal-password')) {
+    button.addEventListener('click', () => {
+      const input = button.parentElement.querySelector('input');
+      const shown = input.type === 'text';
+      input.type = shown ? 'password' : 'text';
+      button.classList.toggle('is-on', !shown);
+      button.setAttribute('aria-label', shown ? 'نمایش رمز' : 'پنهان کردن رمز');
+    });
+  }
+
   $('themeBtn').addEventListener('click', toggleTheme);
   $('newChatBtn').addEventListener('click', newChatModal);
   $('profileBtn').addEventListener('click', profileModal);
@@ -2470,6 +2594,7 @@
   });
   $('messageList').addEventListener('scroll', () => {
     if ($('messageList').scrollTop < 60) loadOlderMessages();
+    state.stickToBottom = atBottom();
     updateJumpButton();
   });
   $('jumpToLatest').addEventListener('click', () => {

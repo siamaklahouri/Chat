@@ -46,7 +46,12 @@
       </label>
       <label class="field">
         <span>رمز عبور</span>
-        <input name="password" type="password" placeholder="••••••" required />
+        <span class="password-field">
+          <input name="password" type="password" placeholder="••••••" required />
+          <button type="button" class="icon-btn reveal-password" aria-label="نمایش رمز">
+            <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M12 5c-5 0-9 4.5-9 7s4 7 9 7 9-4.5 9-7-4-7-9-7Zm0 11a4 4 0 1 1 0-8 4 4 0 0 1 0 8Zm0-6a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z"/></svg>
+          </button>
+        </span>
       </label>
       <button class="btn btn-primary" type="submit">ورود</button>
     </form>
@@ -62,7 +67,12 @@
       </label>
       <label class="field">
         <span>رمز عبور</span>
-        <input name="password" type="password" placeholder="حداقل ۸ نویسه" minlength="8" required />
+        <span class="password-field">
+          <input name="password" type="password" placeholder="حداقل ۸ نویسه" minlength="8" required />
+          <button type="button" class="icon-btn reveal-password" aria-label="نمایش رمز">
+            <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M12 5c-5 0-9 4.5-9 7s4 7 9 7 9-4.5 9-7-4-7-9-7Zm0 11a4 4 0 1 1 0-8 4 4 0 0 1 0 8Zm0-6a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z"/></svg>
+          </button>
+        </span>
       </label>
       <button class="btn btn-primary" type="submit">ثبت‌نام</button>
       <p class="hint">پس از ثبت‌نام، حساب شما باید توسط مدیر تایید شود.</p>
@@ -72,9 +82,11 @@
 
     <!-- دانلود از خود سرور، تا نصب برنامه به هیچ فروشگاه یا سایت بیرونی وابسته نباشد. -->
     <a id="apkLink" class="apk-link is-hidden" href="/app.apk" download>
-      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 16l-5-5h3V4h4v7h3zM5 18h14v2H5z"/></svg>
-      <span>دریافت برنامه‌ی اندروید</span>
-      <small id="apkMeta" class="muted"></small>
+      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M12 16l-5-5h3V4h4v7h3zM5 18h14v2H5z"/></svg>
+      <span class="apk-text">
+        <strong>دریافت برنامه‌ی اندروید</strong>
+        <small id="apkMeta" class="muted"></small>
+      </span>
     </a>
   </div>
 </section>
@@ -104,6 +116,7 @@
     </header>
 
     <div class="search-row">
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M10 2a8 8 0 1 0 4.9 14.3l5.4 5.4 1.4-1.4-5.4-5.4A8 8 0 0 0 10 2Zm0 2a6 6 0 1 1 0 12 6 6 0 0 1 0-12Z"/></svg>
       <input id="conversationSearch" type="search" placeholder="جستجو در گفتگوها…" />
     </div>
 

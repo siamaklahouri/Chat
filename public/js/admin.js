@@ -11,6 +11,8 @@
   if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
 
   let token = localStorage.getItem(TOKEN_KEY) || null;
+  // توکن کوتاه‌عمر فایل، برای نشان دادن عکس پروفایل کاربرها.
+  let fileToken = null;
   let filter = '';
   let currentUserId = null;
 
@@ -121,8 +123,15 @@
 
       const avatar = document.createElement('span');
       avatar.className = 'avatar';
-      avatar.textContent = (user.displayName || '?').charAt(0).toUpperCase();
-      avatar.style.background = user.avatarColor;
+      avatar.style.backgroundColor = user.avatarColor;
+      if (user.avatarUrl && fileToken) {
+        // همان عکسی که کاربر در برنامه گذاشته، تا پنل با بقیه‌ی برنامه یکی باشد.
+        const sep = user.avatarUrl.includes('?') ? '&' : '?';
+        avatar.style.backgroundImage = `url("${user.avatarUrl}${sep}t=${encodeURIComponent(fileToken)}")`;
+        avatar.classList.add('has-photo');
+      } else {
+        avatar.textContent = (user.displayName || '?').charAt(0).toUpperCase();
+      }
 
       const main = document.createElement('div');
       main.className = 'admin-user-main';
@@ -238,7 +247,9 @@
 
   async function start() {
     try {
-      const { user } = await api('/me');
+      const me = await api('/me');
+      const { user } = me;
+      fileToken = me.fileToken || null;
       if (!user.isAdmin) return showGate('این حساب دسترسی مدیریت ندارد.');
       $('adminWho').replaceChildren(Object.assign(document.createElement('bdi'), { textContent: `@${user.username}` }));
       currentUserId = user.id;
