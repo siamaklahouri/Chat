@@ -1362,7 +1362,45 @@
   $('stopRecord').addEventListener('click', () => stopRecording());
   $('cancelRecord').addEventListener('click', () => stopRecording({ cancel: true }));
 
-  $('attachBtn').addEventListener('click', () => $('imageInput').click());
+  /**
+   * یک دکمه‌ی پیوست به‌جای دو تا.
+   *
+   * با پنج دکمه کنار کادر نوشتن، روی گوشی ۳۹۰ پیکسلی فقط ۱۳۴ پیکسل برای
+   * نوشتن می‌ماند و روی ۳۲۰ پیکسلی ۶۴ پیکسل — عملاً غیرقابل استفاده.
+   */
+  $('attachBtn').addEventListener('click', () => {
+    openModal('پیوست', (body) => {
+      const option = (icon, label, hint, onClick) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'attach-option';
+        const mark = document.createElement('span');
+        mark.className = 'attach-icon';
+        mark.textContent = icon;
+        const main = document.createElement('span');
+        main.className = 'attach-main';
+        main.append(
+          Object.assign(document.createElement('strong'), { textContent: label }),
+          Object.assign(document.createElement('small'), { className: 'muted', textContent: hint })
+        );
+        button.append(mark, main);
+        button.addEventListener('click', () => {
+          closeModal();
+          onClick();
+        });
+        return button;
+      };
+
+      body.append(
+        option('🖼', 'عکس', 'می‌توانید چند عکس را با هم انتخاب کنید', () =>
+          $('imageInput').click()
+        ),
+        option('📎', 'فایل', `تا ${fileSize(MAX_FILE_BYTES)} — سند، ویدیو، فایل فشرده`, () =>
+          $('fileInput').click()
+        )
+      );
+    });
+  });
 
   $('imageInput').addEventListener('change', async (event) => {
     const chosen = [...(event.target.files || [])];
@@ -1408,8 +1446,6 @@
 
   $('cancelImage').addEventListener('click', clearImagePreview);
 
-  $('fileBtn').addEventListener('click', () => $('fileInput').click());
-
   $('fileInput').addEventListener('change', async (event) => {
     const file = event.target.files?.[0];
     event.target.value = '';
@@ -1423,7 +1459,7 @@
     if (state.replyTo) form.append('replyToId', String(state.replyTo.id));
 
     toast(`در حال فرستادن ${file.name}…`);
-    $('fileBtn').disabled = true;
+    $('attachBtn').disabled = true;
     try {
       await api(`/conversations/${state.activeId}/files`, { method: 'POST', body: form, raw: true });
       state.replyTo = null;
@@ -1431,7 +1467,7 @@
     } catch (err) {
       toast(err.message, true);
     } finally {
-      $('fileBtn').disabled = false;
+      $('attachBtn').disabled = false;
     }
   });
 
@@ -3402,6 +3438,11 @@
   ).match(/\p{Extended_Pictographic}(\uFE0F)?/gu) || [];
 
   $('emojiBtn').addEventListener('click', () => {
+    // جای مکان‌نما را همین حالا نگه می‌داریم؛ با باز شدن پنجره، فوکوس از
+    // کادر نوشتن می‌رود و دیگر نمی‌شود مطمئن بود کجا بوده.
+    const input = $('messageInput');
+    const at = input.selectionStart ?? input.value.length;
+
     openModal('ایموجی', (body) => {
       const grid = document.createElement('div');
       grid.className = 'emoji-grid';
@@ -3410,8 +3451,6 @@
         button.type = 'button';
         button.textContent = emoji;
         button.addEventListener('click', () => {
-          const input = $('messageInput');
-          const at = input.selectionStart ?? input.value.length;
           input.value = input.value.slice(0, at) + emoji + input.value.slice(at);
           input.selectionStart = input.selectionEnd = at + emoji.length;
           autoGrow();

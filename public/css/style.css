@@ -686,7 +686,8 @@ html[dir='rtl'] .conversation.is-active { box-shadow: inset -3px 0 0 var(--accen
 .lightbox-download { position: absolute; top: calc(12px + var(--safe-top)); inset-inline-start: 12px; color: #fff; }
 
 .toast {
-  position: fixed; bottom: calc(22px + var(--safe-bottom)); inset-inline: 0;
+  /* بالاتر از نوار نوشتن می‌نشیند، وگرنه روی کادر تایپ می‌افتد. */
+  position: fixed; bottom: calc(78px + var(--safe-bottom)); inset-inline: 0;
   margin-inline: auto; width: fit-content; max-width: 86%; z-index: 80;
   background: var(--bg-3); border: 1px solid var(--line);
   border-radius: 999px; padding: 9px 18px; font-size: 13px;
@@ -823,8 +824,24 @@ html[dir='rtl'] .conversation.is-active { box-shadow: inset -3px 0 0 var(--accen
 
 /* ------------------------ پیوست فایل و ایموجی ------------------------ */
 
-.only-desktop { display: inline-grid; }
-@media (max-width: 820px) { .only-desktop { display: none; } }
+/* گزینه‌های پنجره‌ی پیوست */
+.attach-option {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  padding: 12px 14px; text-align: start;
+  border: 1px solid var(--line); border-radius: 14px;
+  background: var(--bg-3); color: inherit;
+}
+.attach-icon { font-size: 26px; flex: none; }
+.attach-main { display: grid; gap: 2px; min-width: 0; }
+.attach-main small { font-size: 11px; }
+@media (hover: hover) { .attach-option:hover { border-color: var(--accent); } }
+
+/* روی صفحه‌های باریک، دکمه‌ها کمی جمع‌تر تا جای نوشتن بماند. */
+@media (max-width: 420px) {
+  .composer { gap: 5px; padding-inline: 7px; }
+  .composer .icon-btn { width: 34px; height: 34px; }
+  .composer textarea { padding-inline: 11px; }
+}
 
 /* حباب فایل: آیکون، نام و حجم */
 .file-card {
