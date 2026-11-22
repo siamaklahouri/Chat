@@ -2,6 +2,22 @@
 (() => {
   'use strict';
 
+  /* لایه‌ی زبان در i18n.js بار می‌شود و پیش از این فایل اجرا شده است.
+     اگر به هر دلیلی نبود، برنامه نباید بخوابد: متن فارسی برمی‌گردد. */
+  const i18n = window.i18n || {
+    t: (key, vars) =>
+      vars
+        ? Object.entries(vars).reduce((out, [k, v]) => out.split(`{${k}}`).join(String(v)), key)
+        : key,
+    num: (n) => Number(n).toLocaleString('fa-IR'),
+    localeOf: () => 'fa-IR',
+    translateDom: () => {},
+    setLang: () => {},
+    langs: [['fa', 'فارسی', 'rtl']],
+    current: 'fa',
+  };
+  const t = (key, vars) => i18n.t(key, vars);
+
   const $ = (id) => document.getElementById(id);
   const TOKEN_KEY = 'messenger.token';
   const MAX_IMAGE_EDGE = 1600; // عکس‌ها پیش از آپلود تا این اندازه کوچک می‌شوند
@@ -45,34 +61,44 @@
 
   /* ------------------------------ ابزارها ------------------------------ */
 
-  const fa = (n) => Number(n).toLocaleString('fa-IR');
+  const fa = (n) => i18n.num(n);
   const initials = (name) => (name || '?').trim().charAt(0).toUpperCase();
 
+  /** پیام کوتاهِ «چیزی اینجا نیست». متن همیشه به‌صورت textContent می‌نشیند. */
+  function emptyNote(text, className = 'empty-list') {
+    const p = document.createElement('p');
+    p.className = className;
+    p.textContent = text;
+    return p;
+  }
+
   const timeText = (ts) =>
-    new Date(ts).toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' });
+    new Date(ts).toLocaleTimeString(i18n.localeOf(), { hour: '2-digit', minute: '2-digit' });
 
   const dayText = (ts) => {
     const date = new Date(ts);
     const today = new Date();
     const yesterday = new Date(Date.now() - 86400000);
     const same = (a, b) => a.toDateString() === b.toDateString();
-    if (same(date, today)) return 'امروز';
-    if (same(date, yesterday)) return 'دیروز';
-    return date.toLocaleDateString('fa-IR', { year: 'numeric', month: 'long', day: 'numeric' });
+    if (same(date, today)) return t('امروز');
+    if (same(date, yesterday)) return t('دیروز');
+    return date.toLocaleDateString(i18n.localeOf(), {
+      year: 'numeric', month: 'long', day: 'numeric',
+    });
   };
 
   const relativeTime = (ts) => {
     if (!ts) return '';
     const diff = Date.now() - ts;
-    if (diff < 60000) return 'همین حالا';
-    if (diff < 3600000) return `${fa(Math.floor(diff / 60000))} دقیقه پیش`;
-    if (diff < 86400000) return `${fa(Math.floor(diff / 3600000))} ساعت پیش`;
-    return `${fa(Math.floor(diff / 86400000))} روز پیش`;
+    if (diff < 60000) return t('همین حالا');
+    if (diff < 3600000) return t('{n} دقیقه پیش', { n: fa(Math.floor(diff / 60000)) });
+    if (diff < 86400000) return t('{n} ساعت پیش', { n: fa(Math.floor(diff / 3600000)) });
+    return t('{n} روز پیش', { n: fa(Math.floor(diff / 86400000)) });
   };
 
   const fileSize = (bytes) => {
     if (!bytes) return '';
-    const units = ['بایت', 'کیلوبایت', 'مگابایت'];
+    const units = [t('بایت'), t('کیلوبایت'), t('مگابایت')];
     let value = bytes;
     let unit = 0;
     while (value >= 1024 && unit < units.length - 1) {
@@ -124,23 +150,23 @@
   const WALL_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
 
   const ACCENTS = [
-    ['indigo', 'بنفش‌آبی'],
-    ['violet', 'بنفش'],
-    ['blue', 'آبی'],
-    ['teal', 'فیروزه‌ای'],
-    ['rose', 'سرخابی'],
-    ['amber', 'کهربایی'],
+    ['indigo', t('بنفش‌آبی')],
+    ['violet', t('بنفش')],
+    ['blue', t('آبی')],
+    ['teal', t('فیروزه‌ای')],
+    ['rose', t('سرخابی')],
+    ['amber', t('کهربایی')],
   ];
 
   const WALLS = [
-    ['aurora', 'شفق'],
-    ['mesh', 'مه رنگی'],
-    ['sunset', 'غروب'],
-    ['night', 'شب'],
-    ['dots', 'نقطه‌چین'],
-    ['grid', 'شبکه'],
-    ['waves', 'راه‌راه'],
-    ['plain', 'ساده'],
+    ['aurora', t('شفق')],
+    ['mesh', t('مه رنگی')],
+    ['sunset', t('غروب')],
+    ['night', t('شب')],
+    ['dots', t('نقطه‌چین')],
+    ['grid', t('شبکه')],
+    ['waves', t('راه‌راه')],
+    ['plain', t('ساده')],
   ];
 
   const DEFAULT_ACCENT = 'indigo';
@@ -183,7 +209,7 @@
    */
   async function prepareWallImage(file) {
     const bitmap = await createImageBitmap(file).catch(() => null);
-    if (!bitmap) throw new Error('این فایل عکس نیست.');
+    if (!bitmap) throw new Error(t('این فایل عکس نیست.'));
 
     const scale = Math.min(1, WALL_IMAGE_EDGE / Math.max(bitmap.width, bitmap.height));
     const canvas = document.createElement('canvas');
@@ -197,7 +223,7 @@
       const url = canvas.toDataURL('image/jpeg', quality);
       if (url.length <= WALL_IMAGE_MAX_BYTES) return url;
     }
-    throw new Error('این عکس خیلی بزرگ است؛ عکس کوچک‌تری انتخاب کنید.');
+    throw new Error(t('این عکس خیلی بزرگ است؛ عکس کوچک‌تری انتخاب کنید.'));
   }
 
   /**
@@ -219,10 +245,27 @@
         return row;
       };
 
+      // ---- زبان
+      const langRow = section(t('زبان'), 'look-row');
+      for (const [code, label] of i18n.langs) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = label;
+        // نام هر زبان همیشه به خطِ خودش نوشته می‌شود، پس جهتش را هم
+        // جدا می‌گذاریم تا «English» وسط متن فارسی نشکند.
+        button.dir = code === 'fa' ? 'rtl' : 'ltr';
+        button.classList.toggle('is-active', code === i18n.current);
+        button.addEventListener('click', () => {
+          if (code === i18n.current) return;
+          i18n.setLang(code);
+        });
+        langRow.appendChild(button);
+      }
+
       // ---- تم
-      const themeRow = section('تم', 'look-row');
+      const themeRow = section(t('تم'), 'look-row');
       const current = localStorage.getItem(THEME_KEY) || 'auto';
-      for (const [value, label] of [['auto', 'خودکار'], ['light', 'روشن'], ['dark', 'تیره']]) {
+      for (const [value, label] of [['auto', t('خودکار')], ['light', t('روشن')], ['dark', t('تیره')]]) {
         const button = document.createElement('button');
         button.type = 'button';
         button.textContent = label;
@@ -238,14 +281,14 @@
       }
 
       // ---- رنگ لهجه
-      const accentRow = section('رنگ', 'swatches');
+      const accentRow = section(t('رنگ'), 'swatches');
       for (const [id, label] of ACCENTS) {
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'swatch';
         button.dataset.accent = id;
         button.title = label;
-        button.setAttribute('aria-label', `رنگ ${label}`);
+        button.setAttribute('aria-label', t('رنگ {label}', { label }));
         button.classList.toggle('is-active', id === storedAccent());
         button.addEventListener('click', () => {
           localStorage.setItem(ACCENT_KEY, id);
@@ -257,14 +300,14 @@
       }
 
       // ---- پس‌زمینه‌ی گفتگو
-      const wallRow = section('پس‌زمینه‌ی گفتگو', 'walls');
+      const wallRow = section(t('پس‌زمینه‌ی گفتگو'), 'walls');
       for (const [id, label] of WALLS) {
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'wall-chip';
         button.dataset.wall = id;
         button.title = label;
-        button.setAttribute('aria-label', `پس‌زمینه‌ی ${label}`);
+        button.setAttribute('aria-label', t('پس‌زمینه‌ی {label}', { label }));
         button.classList.toggle('is-active', id === storedWall());
         button.addEventListener('click', () => {
           localStorage.setItem(WALL_KEY, id);
@@ -280,8 +323,8 @@
       pick.type = 'button';
       pick.className = 'wall-chip wall-pick';
       pick.dataset.wall = 'custom';
-      pick.title = 'عکس از گالری';
-      pick.setAttribute('aria-label', 'انتخاب عکس پس‌زمینه از گالری');
+      pick.title = t('عکس از گالری');
+      pick.setAttribute('aria-label', t('انتخاب عکس پس‌زمینه از گالری'));
 
       const file = document.createElement('input');
       file.type = 'file';
@@ -322,14 +365,14 @@
           try {
             localStorage.setItem(WALL_IMAGE_KEY, url);
           } catch {
-            throw new Error('جای کافی در این مرورگر نیست؛ عکس کوچک‌تری انتخاب کنید.');
+            throw new Error(t('جای کافی در این مرورگر نیست؛ عکس کوچک‌تری انتخاب کنید.'));
           }
           localStorage.setItem(WALL_KEY, 'custom');
           applyWall('custom');
           drawPick();
           markActive(pick);
           removeImage.classList.remove('is-hidden');
-          toast('پس‌زمینه عوض شد.');
+          toast(t('پس‌زمینه عوض شد.'));
         } catch (err) {
           toast(err.message, true);
         }
@@ -338,7 +381,7 @@
       const removeImage = document.createElement('button');
       removeImage.type = 'button';
       removeImage.className = 'btn wall-clear';
-      removeImage.textContent = 'برداشتن عکس پس‌زمینه';
+      removeImage.textContent = t('برداشتن عکس پس‌زمینه');
       removeImage.classList.toggle('is-hidden', !wallImage());
       removeImage.addEventListener('click', () => {
         localStorage.removeItem(WALL_IMAGE_KEY);
@@ -360,12 +403,14 @@
 
   /** همان جعبه، این بار به‌تنهایی از دکمه‌ی سربرگ. */
   function appearanceModal() {
-    openModal('ظاهر', (body) => body.appendChild(appearanceSection()));
+    openModal(t('ظاهر'), (body) => body.appendChild(appearanceSection()));
   }
 
   applyTheme(localStorage.getItem(THEME_KEY));
   applyAccent(storedAccent());
   applyWall(storedWall());
+  // متن‌های ثابتِ index.html هم باید به زبان انتخابی دربیایند.
+  i18n.translateDom();
 
   /**
    * نشانی فایل با توکن کوتاه‌عمرِ مخصوص فایل ساخته می‌شود — نه با توکن نشست،
@@ -389,7 +434,7 @@
 
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      const error = new Error(data.error || 'خطای ناشناخته');
+      const error = new Error(data.error || t('خطای ناشناخته'));
       error.status = res.status;
       error.code = data.code;
       throw error;
@@ -419,7 +464,7 @@
   $('loginForm').addEventListener('submit', async (event) => {
     event.preventDefault();
     const form = new FormData(event.target);
-    setAuthMessage('در حال ورود…');
+    setAuthMessage(t('در حال ورود…'));
     try {
       const data = await api('/auth/login', {
         method: 'POST',
@@ -438,7 +483,7 @@
   $('registerForm').addEventListener('submit', async (event) => {
     event.preventDefault();
     const form = new FormData(event.target);
-    setAuthMessage('در حال ثبت‌نام…');
+    setAuthMessage(t('در حال ثبت‌نام…'));
     try {
       const data = await api('/auth/register', {
         method: 'POST',
@@ -483,13 +528,15 @@
 
   function conversationSubtitle(conv) {
     const message = conv.lastMessage;
-    if (!message) return 'هنوز پیامی رد و بدل نشده';
-    const prefix = message.senderId === state.me.id ? 'شما: ' : '';
-    if (message.deleted) return `${prefix}پیام حذف شد`;
+    if (!message) return t('هنوز پیامی رد و بدل نشده');
+    const prefix = message.senderId === state.me.id ? t('شما: ') : '';
+    if (message.deleted) return t('{prefix}پیام حذف شد', { prefix });
     if (message.kind === 'system') return message.body;
-    if (message.kind === 'image') return `${prefix}🖼 عکس${message.body ? ` — ${message.body}` : ''}`;
-    if (message.kind === 'voice') return `${prefix}🎤 پیام صوتی`;
-    if (message.kind === 'file') return `${prefix}📎 ${message.attachment?.name || 'فایل'}`;
+    if (message.kind === 'image') {
+      return t('{prefix}🖼 عکس', { prefix }) + (message.body ? ` — ${message.body}` : '');
+    }
+    if (message.kind === 'voice') return t('{prefix}🎤 پیام صوتی', { prefix });
+    if (message.kind === 'file') return t('{prefix}📎 {name}', { prefix, name: message.attachment?.name || t('فایل') });
     if (message.kind === 'call') return `${message.body.startsWith('video-') ? '📹' : '📞'} ${callRecordText(message)}`;
     return prefix + message.body;
   }
@@ -505,19 +552,19 @@
         return button;
       };
       body.append(
-        make(conv.pinned ? '📌 برداشتن سنجاق' : '📌 سنجاق کردن', async () => {
+        make(conv.pinned ? t('📌 برداشتن سنجاق') : t('📌 سنجاق کردن'), async () => {
           await setConversationFlag(conv, { pinned: !conv.pinned });
           closeModal();
         }),
-        make(conv.muted ? '🔔 روشن کردن صدا' : '🔕 بی‌صدا کردن', async () => {
+        make(conv.muted ? t('🔔 روشن کردن صدا') : t('🔕 بی‌صدا کردن'), async () => {
           await setConversationFlag(conv, { muted: !conv.muted });
           closeModal();
         }),
-        make(conv.archived ? '📤 خارج کردن از بایگانی' : '📥 بایگانی کردن', async () => {
+        make(conv.archived ? t('📤 خارج کردن از بایگانی') : t('📥 بایگانی کردن'), async () => {
           await setConversationFlag(conv, { archived: !conv.archived });
           closeModal();
         }),
-        make('🔵 علامت‌زدن به‌عنوان خوانده‌نشده', async () => {
+        make(t('🔵 علامت‌زدن به‌عنوان خوانده‌نشده'), async () => {
           await setConversationFlag(conv, { unread: true });
           closeModal();
         })
@@ -534,9 +581,9 @@
 
     list.innerHTML = '';
     if (items.length === 0) {
-      list.innerHTML = `<p class="empty-list">${
-        filter ? 'گفتگویی پیدا نشد.' : 'هنوز گفتگویی ندارید. با دکمه + شروع کنید.'
-      }</p>`;
+      list.appendChild(emptyNote(
+        filter ? t('گفتگویی پیدا نشد.') : t('هنوز گفتگویی ندارید. با دکمه + شروع کنید.')
+      ));
       return;
     }
 
@@ -572,9 +619,9 @@
       const nameCell = button.querySelector('.conversation-name');
       nameCell.textContent = conv.title;
       for (const [flag, mark, title] of [
-        [conv.pinned, '📌', 'سنجاق‌شده'],
-        [conv.muted, '🔕', 'بی‌صدا'],
-        [conv.archived, '📥', 'بایگانی‌شده'],
+        [conv.pinned, '📌', t('سنجاق‌شده')],
+        [conv.muted, '🔕', t('بی‌صدا')],
+        [conv.archived, '📥', t('بایگانی‌شده')],
       ]) {
         if (!flag) continue;
         const icon = document.createElement('span');
@@ -612,9 +659,9 @@
   /* ------------------------------- پیام‌ها ------------------------------ */
 
   function chatStatusText(conv) {
-    if (conv.type === 'group') return `${fa(conv.memberCount)} عضو`;
-    if (!conv.peer) return 'این حساب دیگر وجود ندارد';
-    return conv.peer.online ? 'آنلاین' : `آخرین بازدید ${relativeTime(conv.peer.lastSeenAt)}`;
+    if (conv.type === 'group') return t('{n} عضو', { n: fa(conv.memberCount) });
+    if (!conv.peer) return t('این حساب دیگر وجود ندارد');
+    return conv.peer.online ? t('آنلاین') : t('آخرین بازدید {when}', { when: relativeTime(conv.peer.lastSeenAt) });
   }
 
   function renderChatHeader() {
@@ -673,7 +720,7 @@
   function senderName(senderId) {
     const conv = state.conversations.get(state.activeId);
     const member = conv?.members.find((m) => m.id === senderId);
-    return member ? member.displayName : 'کاربر حذف‌شده';
+    return member ? member.displayName : t('کاربر حذف‌شده');
   }
 
   /** بیشترین شناسه پیامی که همه‌ی طرف‌های گفتگو خوانده‌اند */
@@ -729,7 +776,7 @@
     if (message.forwarded && !message.deleted) {
       const tag = document.createElement('div');
       tag.className = 'bubble-forwarded';
-      tag.textContent = '↪ بازفرستاده‌شده';
+      tag.textContent = t('↪ بازفرستاده‌شده');
       bubble.appendChild(tag);
     }
 
@@ -740,11 +787,11 @@
       who.textContent = senderName(message.replyTo.senderId);
       const text = document.createElement('span');
       text.textContent = message.replyTo.deleted
-        ? 'پیام حذف شد'
+        ? t('پیام حذف شد')
         : message.replyTo.kind === 'image'
-          ? `🖼 عکس${message.replyTo.body ? ` — ${message.replyTo.body}` : ''}`
+          ? t('🖼 عکس') + (message.replyTo.body ? ` — ${message.replyTo.body}` : '')
           : message.replyTo.kind === 'voice'
-            ? '🎤 پیام صوتی'
+            ? t('🎤 پیام صوتی')
             : message.replyTo.body;
       reply.append(who, text);
       reply.addEventListener('click', () => scrollToMessage(message.replyTo.id));
@@ -774,7 +821,7 @@
       const img = document.createElement('img');
       img.loading = 'lazy';
       img.decoding = 'async';
-      img.alt = message.attachment.name || 'عکس';
+      img.alt = message.attachment.name || t('عکس');
       img.src = fileUrl(message.attachment.url);
       keepPinnedAfterLoad(img);
       button.appendChild(img);
@@ -793,7 +840,7 @@
     if (message.body || message.deleted) {
       const text = document.createElement('div');
       text.className = `bubble-text${message.deleted ? ' deleted' : ''}`;
-      if (message.deleted) text.textContent = 'این پیام حذف شد';
+      if (message.deleted) text.textContent = t('این پیام حذف شد');
       else linkify(text, message.body);
       bubble.appendChild(text);
     }
@@ -805,7 +852,7 @@
     meta.appendChild(time);
     if (message.editedAt && !message.deleted) {
       const edited = document.createElement('span');
-      edited.textContent = '(ویرایش‌شده)';
+      edited.textContent = t('(ویرایش‌شده)');
       meta.appendChild(edited);
     }
     if (mine && !message.deleted) {
@@ -819,23 +866,23 @@
     if (!message.deleted && !message.pending) {
       const actions = document.createElement('div');
       actions.className = 'bubble-actions';
-      actions.appendChild(iconButton('😊', 'واکنش', () => openReactionPicker(message)));
+      actions.appendChild(iconButton('😊', t('واکنش'), () => openReactionPicker(message)));
       if (message.body) {
         actions.appendChild(
-          iconButton('⧉', 'کپی متن', async () => {
+          iconButton('⧉', t('کپی متن'), async () => {
             const ok = await copyText(message.body);
-            toast(ok ? 'متن کپی شد.' : 'کپی ممکن نشد.', !ok);
+            toast(ok ? t('متن کپی شد.') : t('کپی ممکن نشد.'), !ok);
           })
         );
       }
-      actions.appendChild(iconButton('☑', 'انتخاب', () => togglePick(message.id, true)));
-      actions.appendChild(iconButton('↪', 'بازفرستادن', () => forwardModal(message)));
-      actions.appendChild(iconButton('↩', 'پاسخ', () => startReply(message)));
+      actions.appendChild(iconButton('☑', t('انتخاب'), () => togglePick(message.id, true)));
+      actions.appendChild(iconButton('↪', t('بازفرستادن'), () => forwardModal(message)));
+      actions.appendChild(iconButton('↩', t('پاسخ'), () => startReply(message)));
       if (mine && message.kind !== 'voice') {
-        actions.appendChild(iconButton('✎', 'ویرایش', () => startEdit(message)));
+        actions.appendChild(iconButton('✎', t('ویرایش'), () => startEdit(message)));
       }
       if (mine) {
-        actions.appendChild(iconButton('🗑', 'حذف', () => removeMessage(message)));
+        actions.appendChild(iconButton('🗑', t('حذف'), () => removeMessage(message)));
       }
       bubble.appendChild(actions);
       bubble.addEventListener('contextmenu', (event) => {
@@ -868,10 +915,10 @@
     const mine = message.senderId === state.me?.id;
     const video = message.body.startsWith('video-');
     const status = video ? message.body.slice(6) : message.body;
-    const what = video ? 'تماس تصویری' : 'تماس صوتی';
+    const what = video ? t('تماس تصویری') : t('تماس صوتی');
     if (status === 'ended') return `${what} · ${clockText(message.durationMs)}`;
-    if (status === 'declined') return mine ? `${what} رد شد` : `${what} را رد کردید`;
-    return `${what} بی‌پاسخ`;
+    if (status === 'declined') return mine ? t('{what} رد شد', { what }) : t('{what} را رد کردید', { what });
+    return t('{what} بی‌پاسخ', { what });
   }
 
   /** پخش‌کننده‌ی پیام صوتی: دکمه‌ی پخش، نوار پیشرفت و زمان. */
@@ -889,7 +936,7 @@
     const play = document.createElement('button');
     play.type = 'button';
     play.className = 'voice-play';
-    play.setAttribute('aria-label', 'پخش پیام صوتی');
+    play.setAttribute('aria-label', t('پخش پیام صوتی'));
     const setIcon = (playing) => {
       play.innerHTML = playing
         ? '<svg viewBox="0 0 24 24"><path fill="currentColor" d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>'
@@ -911,7 +958,7 @@
       if (audio.paused) {
         // هر بار فقط یک صدا پخش شود.
         document.querySelectorAll('audio').forEach((other) => other !== audio && other.pause());
-        audio.play().catch(() => toast('پخش صدا ممکن نشد.', true));
+        audio.play().catch(() => toast(t('پخش صدا ممکن نشد.'), true));
       } else {
         audio.pause();
       }
@@ -987,7 +1034,7 @@
   function tickIcon(state) {
     const span = document.createElement('span');
     span.className = `tick tick-${state}`;
-    span.title = { pending: 'در حال ارسال', sent: 'ارسال شد', read: 'خوانده شد' }[state];
+    span.title = { pending: t('در حال ارسال'), sent: t('ارسال شد'), read: t('خوانده شد') }[state];
 
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('viewBox', '0 0 22 22');
@@ -1023,7 +1070,7 @@
       const chip = document.createElement('button');
       chip.type = 'button';
       chip.className = `reaction${item.mine ? ' is-mine' : ''}`;
-      chip.title = item.mine ? 'برداشتن واکنش' : 'همین واکنش';
+      chip.title = item.mine ? t('برداشتن واکنش') : t('همین واکنش');
       chip.append(item.emoji, Object.assign(document.createElement('span'), { textContent: fa(item.count) }));
       chip.addEventListener('click', () => sendReaction(message, item.emoji));
       bar.appendChild(chip);
@@ -1040,7 +1087,7 @@
   }
 
   function openReactionPicker(message) {
-    openModal('واکنش', (body) => {
+    openModal(t('واکنش'), (body) => {
       const grid = document.createElement('div');
       grid.className = 'reaction-picker';
       for (const emoji of REACTIONS) {
@@ -1059,13 +1106,13 @@
 
   /** انتخاب گفتگوی مقصد برای بازفرستادن. */
   function forwardModal(message) {
-    openModal('بازفرستادن به…', (body) => {
+    openModal(t('بازفرستادن به…'), (body) => {
       const list = document.createElement('div');
       list.style.display = 'grid';
       list.style.gap = '6px';
       const others = [...state.conversations.values()].filter((c) => !c.orphaned);
       if (others.length === 0) {
-        body.innerHTML = '<p class="empty-list">گفتگویی برای بازفرستادن نیست.</p>';
+        body.innerHTML = emptyNote(t('گفتگویی برای بازفرستادن نیست.')).outerHTML;
         return;
       }
       for (const conv of others) {
@@ -1087,7 +1134,7 @@
               body: { messageId: message.id },
             });
             closeModal();
-            toast(`به «${conv.title}» فرستاده شد.`);
+            toast(t('به «{title}» فرستاده شد.', { title: conv.title }));
           } catch (err) {
             toast(err.message, true);
             row.disabled = false;
@@ -1223,7 +1270,7 @@
   function renderSelectBar() {
     const bar = $('selectBar');
     bar.classList.toggle('is-hidden', state.picked.size === 0);
-    $('selectCount').textContent = `${fa(state.picked.size)} پیام انتخاب شده`;
+    $('selectCount').textContent = t('{n} پیام انتخاب شده', { n: fa(state.picked.size) });
   }
 
   /** حذف دسته‌ای. پیام‌هایی که مال ما نیستند از قبل حذف نمی‌شوند. */
@@ -1233,9 +1280,9 @@
     );
     if (mine.length === 0) {
       clearPicks();
-      return toast('فقط پیام‌های خودتان قابل حذف‌اند.', true);
+      return toast(t('فقط پیام‌های خودتان قابل حذف‌اند.'), true);
     }
-    if (!confirm(`${fa(mine.length)} پیام حذف شود؟`)) return;
+    if (!confirm(t('{n} پیام حذف شود؟', { n: fa(mine.length) }))) return;
 
     let failed = 0;
     for (const message of mine) {
@@ -1246,7 +1293,7 @@
       }
     }
     clearPicks();
-    toast(failed ? `${fa(failed)} پیام حذف نشد.` : `${fa(mine.length)} پیام حذف شد.`, Boolean(failed));
+    toast(failed ? t('{n} پیام حذف نشد.', { n: fa(failed) }) : t('{n} پیام حذف شد.', { n: fa(mine.length) }), Boolean(failed));
   }
 
   /** دکمه‌ی «رفتن به آخرین پیام»، فقط وقتی کاربر بالا رفته باشد. */
@@ -1318,7 +1365,7 @@
     $('emptyState').classList.add('is-hidden');
     $('chatView').classList.remove('is-hidden');
     $('appScreen').classList.add('show-chat');
-    $('messageList').innerHTML = '<p class="empty-list">در حال بارگذاری…</p>';
+    $('messageList').innerHTML = emptyNote(t('در حال بارگذاری…')).outerHTML;
 
     try {
       const [{ conversation }, data] = await Promise.all([
@@ -1405,8 +1452,8 @@
     const bar = $('replyBar');
     if (state.editing) {
       bar.classList.remove('is-hidden');
-      $('replyAuthor').textContent = 'ویرایش پیام';
-      $('replyPreview').textContent = state.editing.body || 'عکس';
+      $('replyAuthor').textContent = t('ویرایش پیام');
+      $('replyPreview').textContent = state.editing.body || t('عکس');
       return;
     }
     if (!state.replyTo) {
@@ -1417,9 +1464,9 @@
     $('replyAuthor').textContent = senderName(state.replyTo.senderId);
     $('replyPreview').textContent =
       state.replyTo.kind === 'image'
-        ? '🖼 عکس'
+        ? t('🖼 عکس')
         : state.replyTo.kind === 'voice'
-          ? '🎤 پیام صوتی'
+          ? t('🎤 پیام صوتی')
           : state.replyTo.body;
   }
 
@@ -1434,7 +1481,7 @@
   });
 
   async function removeMessage(message) {
-    if (!confirm('این پیام حذف شود؟')) return;
+    if (!confirm(t('این پیام حذف شود؟'))) return;
     try {
       await api(`/messages/${message.id}`, { method: 'DELETE' });
     } catch (err) {
@@ -1558,14 +1605,14 @@
 
   async function startRecording() {
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
-      return toast('مرورگر شما ضبط صدا را پشتیبانی نمی‌کند.', true);
+      return toast(t('مرورگر شما ضبط صدا را پشتیبانی نمی‌کند.'), true);
     }
 
     let stream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch {
-      return toast('اجازه‌ی دسترسی به میکروفون داده نشد.', true);
+      return toast(t('اجازه‌ی دسترسی به میکروفون داده نشد.'), true);
     }
 
     const mimeType = pickAudioMime();
@@ -1635,7 +1682,7 @@
    * نوشتن می‌ماند و روی ۳۲۰ پیکسلی ۶۴ پیکسل — عملاً غیرقابل استفاده.
    */
   $('attachBtn').addEventListener('click', () => {
-    openModal('پیوست', (body) => {
+    openModal(t('پیوست'), (body) => {
       const option = (icon, label, hint, onClick) => {
         const button = document.createElement('button');
         button.type = 'button';
@@ -1658,10 +1705,10 @@
       };
 
       body.append(
-        option('🖼', 'عکس', 'می‌توانید چند عکس را با هم انتخاب کنید', () =>
+        option('🖼', t('عکس'), t('می‌توانید چند عکس را با هم انتخاب کنید'), () =>
           $('imageInput').click()
         ),
-        option('📎', 'فایل', `تا ${fileSize(MAX_FILE_BYTES)} — سند، ویدیو، فایل فشرده`, () =>
+        option('📎', t('فایل'), t('تا {size} — سند، ویدیو، فایل فشرده', { size: fileSize(MAX_FILE_BYTES) }), () =>
           $('fileInput').click()
         )
       );
@@ -1674,12 +1721,12 @@
     if (chosen.length === 0) return;
 
     const images = chosen.filter((f) => f.type.startsWith('image/'));
-    if (images.length === 0) return toast('فقط فایل عکس قابل ارسال است.', true);
+    if (images.length === 0) return toast(t('فقط فایل عکس قابل ارسال است.'), true);
 
     // چند عکس با هم: اولی در پیش‌نمایش می‌نشیند تا بشود برایش توضیح نوشت،
     // بقیه پشت سر هم و بی‌توضیح می‌روند.
     if (images.length > 1) {
-      toast(`در حال ارسال ${fa(images.length)} عکس…`);
+      toast(t('در حال ارسال {n} عکس…', { n: fa(images.length) }));
       for (const one of images.slice(1)) {
         try {
           const prepared = await prepareImage(one);
@@ -1703,10 +1750,10 @@
       $('imagePreviewName').textContent = prepared.name;
       $('imagePreviewSize').textContent = fileSize(prepared.blob.size);
       $('imagePreview').classList.remove('is-hidden');
-      $('messageInput').placeholder = 'توضیح عکس (اختیاری)…';
+      $('messageInput').placeholder = t('توضیح عکس (اختیاری)…');
       $('messageInput').focus();
     } catch (err) {
-      toast(err.message || 'آماده‌سازی عکس ناموفق بود.', true);
+      toast(err.message || t('آماده‌سازی عکس ناموفق بود.'), true);
     }
   });
 
@@ -1717,14 +1764,14 @@
     event.target.value = '';
     if (!file || !state.activeId) return;
     if (file.size > MAX_FILE_BYTES) {
-      return toast(`حجم فایل بیشتر از ${fileSize(MAX_FILE_BYTES)} است.`, true);
+      return toast(t('حجم فایل بیشتر از {size} است.', { size: fileSize(MAX_FILE_BYTES) }), true);
     }
 
     const form = new FormData();
     form.append('file', file, file.name);
     if (state.replyTo) form.append('replyToId', String(state.replyTo.id));
 
-    toast(`در حال فرستادن ${file.name}…`);
+    toast(t('در حال فرستادن {name}…', { name: file.name }));
     $('attachBtn').disabled = true;
     try {
       await api(`/conversations/${state.activeId}/files`, { method: 'POST', body: form, raw: true });
@@ -1743,7 +1790,7 @@
    */
   async function prepareAvatar(file) {
     const bitmap = await createImageBitmap(file).catch(() => null);
-    if (!bitmap) throw new Error('این فایل عکس نیست.');
+    if (!bitmap) throw new Error(t('این فایل عکس نیست.'));
 
     const side = Math.min(bitmap.width, bitmap.height);
     const sx = Math.round((bitmap.width - side) / 2);
@@ -1757,7 +1804,7 @@
     bitmap.close?.();
 
     const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.86));
-    if (!blob) throw new Error('آماده‌سازی عکس ممکن نشد.');
+    if (!blob) throw new Error(t('آماده‌سازی عکس ممکن نشد.'));
     return blob;
   }
 
@@ -1766,7 +1813,7 @@
     state.pendingImage = null;
     $('imagePreview').classList.add('is-hidden');
     $('imagePreviewImg').removeAttribute('src');
-    $('messageInput').placeholder = 'پیام بنویسید…';
+    $('messageInput').placeholder = t('پیام بنویسید…');
   }
 
   /** عکس را پیش از آپلود کوچک و فشرده می‌کند تا مصرف داده روی موبایل کم شود. */
@@ -1816,7 +1863,7 @@
     updateReplyBar();
     clearImagePreview();
     $('sendBtn').disabled = true;
-    toast('در حال ارسال عکس…');
+    toast(t('در حال ارسال عکس…'));
 
     try {
       await api(`/conversations/${state.activeId}/images`, { method: 'POST', body: form, raw: true });
@@ -1861,7 +1908,7 @@
 
     socket.addEventListener('open', () => {
       state.reconnectDelay = 1000;
-      $('connectionState').textContent = 'آنلاین';
+      $('connectionState').textContent = t('آنلاین');
       // توکن فایل ۲۴ ساعته است؛ با هر اتصال تازه‌اش می‌کنیم تا عکس‌ها در
       // نشست‌های طولانی از کار نیفتند.
       api('/me')
@@ -1882,13 +1929,13 @@
     });
 
     socket.addEventListener('close', (event) => {
-      $('connectionState').textContent = 'قطع — تلاش برای اتصال…';
+      $('connectionState').textContent = t('قطع — تلاش برای اتصال…');
       // بدون سوکت، سیگنالینگ تماس هم از کار می‌افتد.
-      if (state.call) teardownCall('ارتباط قطع شد');
-      if (event.code === 4001) return signOut('نشست شما منقضی شده است. دوباره وارد شوید.');
+      if (state.call) teardownCall(t('ارتباط قطع شد'));
+      if (event.code === 4001) return signOut(t('نشست شما منقضی شده است. دوباره وارد شوید.'));
       if (event.code === 4003) {
         return signOut(
-          event.reason === 'blocked' ? 'حساب شما مسدود شده است.' : 'حساب شما هنوز تایید نشده است.'
+          event.reason === 'blocked' ? t('حساب شما مسدود شده است.') : t('حساب شما هنوز تایید نشده است.')
         );
       }
       setTimeout(connectSocket, state.reconnectDelay);
@@ -2031,13 +2078,13 @@
 
       case 'call:ended':
         if (state.call && (!state.call.id || state.call.id === event.callId)) {
-          teardownCall(CALL_ENDINGS[event.reason] || 'تماس پایان یافت');
+          teardownCall(CALL_ENDINGS[event.reason] || t('تماس پایان یافت'));
         }
         break;
 
       case 'call:error':
-        if (state.call) teardownCall(CALL_ERRORS[event.reason] || 'تماس برقرار نشد');
-        else toast(CALL_ERRORS[event.reason] || 'تماس برقرار نشد', true);
+        if (state.call) teardownCall(CALL_ERRORS[event.reason] || t('تماس برقرار نشد'));
+        else toast(CALL_ERRORS[event.reason] || t('تماس برقرار نشد'), true);
         break;
 
       case 'user:updated': {
@@ -2073,7 +2120,7 @@
 
       case 'data:wiped':
         state.messages = [];
-        toast('داده‌های هفتگی پاک شد.');
+        toast(t('داده‌های هفتگی پاک شد.'));
         loadConversations();
         if (state.activeId) openConversation(state.activeId);
         break;
@@ -2117,7 +2164,7 @@
       indicator.classList.add('is-hidden');
       return;
     }
-    indicator.textContent = `${names.join('، ')} در حال نوشتن…`;
+    indicator.textContent = t('{names} در حال نوشتن…', { names: names.join(t('، ')) });
     indicator.classList.remove('is-hidden');
   }
 
@@ -2132,9 +2179,9 @@
     if (conv.muted) return; // کاربر خودش خواسته این گفتگو ساکت باشد
     const body =
       {
-        image: () => '🖼 عکس فرستاد',
-        file: () => `📎 ${message.attachment?.name || 'فایل'} فرستاد`,
-        voice: () => '🎤 پیام صوتی فرستاد',
+        image: () => t('🖼 عکس فرستاد'),
+        file: () => t('📎 {name} فرستاد', { name: message.attachment?.name || t('فایل') }),
+        voice: () => t('🎤 پیام صوتی فرستاد'),
         call: () => callRecordText(message),
       }[message.kind]?.() ?? message.body.slice(0, 120);
 
@@ -2180,15 +2227,15 @@
       return;
     }
     if (!('Notification' in window)) return;
-    if (Notification.permission === 'granted') return toast('اعلان‌ها از قبل فعال است.');
+    if (Notification.permission === 'granted') return toast(t('اعلان‌ها از قبل فعال است.'));
     if (Notification.permission === 'denied') {
-      if (force) toast('اعلان‌ها را در تنظیمات مرورگر برای این سایت اجازه دهید.', true);
+      if (force) toast(t('اعلان‌ها را در تنظیمات مرورگر برای این سایت اجازه دهید.'), true);
       return;
     }
     if (!force && localStorage.getItem('messenger.notifyAsked')) return;
     localStorage.setItem('messenger.notifyAsked', '1');
     const result = await Notification.requestPermission().catch(() => 'default');
-    if (force) toast(result === 'granted' ? 'اعلان‌ها فعال شد.' : 'اعلان‌ها فعال نشد.', result !== 'granted');
+    if (force) toast(result === 'granted' ? t('اعلان‌ها فعال شد.') : t('اعلان‌ها فعال نشد.'), result !== 'granted');
   }
 
   /* ------------------------------ تماس صوتی ----------------------------- */
@@ -2199,24 +2246,24 @@
    * پیام‌های هماهنگی (offer/answer/candidate) به طرف مقابل است.
    */
   const CALL_ERRORS = {
-    disabled: 'تماس صوتی روی این سرور فعال نیست.',
-    'not-direct': 'تماس صوتی فقط در گفتگوی دونفره ممکن است.',
-    forbidden: 'اجازه‌ی این تماس را ندارید.',
-    'too-many': 'تماس‌های زیادی گرفته‌اید؛ کمی بعد دوباره تلاش کنید.',
-    'no-peer': 'طرف مقابل پیدا نشد.',
-    'already-in-call': 'همین حالا در یک تماس هستید.',
-    busy: 'طرف مقابل در تماس دیگری است.',
-    offline: 'طرف مقابل آنلاین نیست.',
-    gone: 'این تماس دیگر برقرار نیست.',
+    disabled: t('تماس صوتی روی این سرور فعال نیست.'),
+    'not-direct': t('تماس صوتی فقط در گفتگوی دونفره ممکن است.'),
+    forbidden: t('اجازه‌ی این تماس را ندارید.'),
+    'too-many': t('تماس‌های زیادی گرفته‌اید؛ کمی بعد دوباره تلاش کنید.'),
+    'no-peer': t('طرف مقابل پیدا نشد.'),
+    'already-in-call': t('همین حالا در یک تماس هستید.'),
+    busy: t('طرف مقابل در تماس دیگری است.'),
+    offline: t('طرف مقابل آنلاین نیست.'),
+    gone: t('این تماس دیگر برقرار نیست.'),
   };
 
   const CALL_ENDINGS = {
-    declined: 'تماس رد شد',
-    timeout: 'پاسخی داده نشد',
-    cancelled: 'تماس لغو شد',
-    offline: 'طرف مقابل آنلاین نیست',
-    disconnected: 'ارتباط قطع شد',
-    failed: 'برقراری تماس ممکن نشد',
+    declined: t('تماس رد شد'),
+    timeout: t('پاسخی داده نشد'),
+    cancelled: t('تماس لغو شد'),
+    offline: t('طرف مقابل آنلاین نیست'),
+    disconnected: t('ارتباط قطع شد'),
+    failed: t('برقراری تماس ممکن نشد'),
   };
 
   function sendWs(payload) {
@@ -2362,7 +2409,7 @@
       return stream;
     } catch (error) {
       console.warn('[call] دوربین در دسترس نیست؛ تماس صوتی ادامه می‌یابد:', error.name);
-      toast('دوربین در دسترس نیست؛ تماس فقط صوتی برقرار می‌شود.', true);
+      toast(t('دوربین در دسترس نیست؛ تماس فقط صوتی برقرار می‌شود.'), true);
       call.cameraDenied = true;
       return navigator.mediaDevices.getUserMedia({ audio, video: false });
     }
@@ -2492,9 +2539,9 @@
   function startCall(video = false) {
     const conv = state.conversations.get(state.activeId);
     if (!conv || conv.type !== 'direct' || !conv.peer) return;
-    if (state.call) return toast('همین حالا در یک تماس هستید.', true);
+    if (state.call) return toast(t('همین حالا در یک تماس هستید.'), true);
     if (!window.RTCPeerConnection || !navigator.mediaDevices?.getUserMedia) {
-      return toast('مرورگر شما تماس را پشتیبانی نمی‌کند.', true);
+      return toast(t('مرورگر شما تماس را پشتیبانی نمی‌کند.'), true);
     }
 
     state.call = {
@@ -2516,9 +2563,9 @@
       incoming: false,
       photo: conv.peer?.avatarUrl,
     });
-    setCallState('در حال زنگ زدن…');
+    setCallState(t('در حال زنگ زدن…'));
     if (!sendWs({ type: 'call:invite', conversationId: conv.id, video })) {
-      teardownCall('ارتباط با سرور برقرار نیست.');
+      teardownCall(t('ارتباط با سرور برقرار نیست.'));
     }
   }
 
@@ -2527,13 +2574,13 @@
     if (!call || call.role !== 'callee') return;
     ring.stop();
     $('callAccept').classList.add('is-hidden');
-    setCallState('در حال اتصال…');
+    setCallState(t('در حال اتصال…'));
     try {
       // اجازه‌ی میکروفون پیش از پذیرش گرفته می‌شود تا تماس بی‌صدا شروع نشود.
       if (!(await createPeer())) return;
     } catch {
       sendWs({ type: 'call:decline', callId: call.id });
-      teardownCall('دسترسی به میکروفون داده نشد.');
+      teardownCall(t('دسترسی به میکروفون داده نشد.'));
       return;
     }
     sendWs({ type: 'call:accept', callId: call.id });
@@ -2561,9 +2608,9 @@
     $('callMute').classList.toggle('is-on', !track.enabled);
     $('callMute').setAttribute(
       'aria-label',
-      track.enabled ? 'بی‌صدا کردن میکروفون' : 'روشن کردن میکروفون'
+      track.enabled ? t('بی‌صدا کردن میکروفون') : t('روشن کردن میکروفون')
     );
-    toast(track.enabled ? 'میکروفون روشن شد.' : 'میکروفون بی‌صدا شد.');
+    toast(track.enabled ? t('میکروفون روشن شد.') : t('میکروفون بی‌صدا شد.'));
   }
 
   function toggleCamera() {
@@ -2574,7 +2621,7 @@
     $('localVideo').classList.toggle('is-off', !track.enabled);
     $('callCamera').setAttribute(
       'aria-label',
-      track.enabled ? 'خاموش کردن دوربین' : 'روشن کردن دوربین'
+      track.enabled ? t('خاموش کردن دوربین') : t('روشن کردن دوربین')
     );
   }
 
@@ -2593,7 +2640,7 @@
         video: { facingMode: { exact: next } },
       });
     } catch {
-      toast('دوربین دیگری پیدا نشد.', true);
+      toast(t('دوربین دیگری پیدا نشد.'), true);
       return;
     }
 
@@ -2636,7 +2683,7 @@
       video: Boolean(event.video),
       facing: 'user',
       conversationId: event.conversationId,
-      peerName: event.from?.displayName || 'کاربر',
+      peerName: event.from?.displayName || t('کاربر'),
       peerColor: event.from?.avatarColor,
       peerPhoto: event.from?.avatarUrl,
       pc: null,
@@ -2650,12 +2697,12 @@
       incoming: true,
       photo: state.call.peerPhoto,
     });
-    setCallState(state.call.video ? 'تماس تصویری ورودی…' : 'تماس صوتی ورودی…');
+    setCallState(state.call.video ? t('تماس تصویری ورودی…') : t('تماس صوتی ورودی…'));
     ring.start(true);
     if (document.visibilityState !== 'visible') {
       notify({ id: event.conversationId, title: state.call.peerName }, {
         kind: 'text',
-        body: state.call.video ? 'تماس تصویری…' : 'تماس صوتی…',
+        body: state.call.video ? t('تماس تصویری…') : t('تماس صوتی…'),
       });
     }
   }
@@ -2664,7 +2711,7 @@
     const call = state.call;
     if (!call || call.id !== event.callId || call.role !== 'caller') return;
     ring.stop();
-    setCallState('در حال اتصال…');
+    setCallState(t('در حال اتصال…'));
     try {
       const pc = await createPeer();
       if (!pc) return;
@@ -2673,7 +2720,7 @@
       sendWs({ type: 'call:signal', callId: call.id, data: { sdp: pc.localDescription } });
     } catch {
       endCall('failed');
-      toast('دسترسی به میکروفون داده نشد.', true);
+      toast(t('دسترسی به میکروفون داده نشد.'), true);
     }
   }
 
@@ -2805,15 +2852,15 @@
 
     const hint = document.createElement('small');
     hint.className = 'muted';
-    hint.textContent = 'دیگران با همین شناسه شما را پیدا می‌کنند.';
+    hint.textContent = t('دیگران با همین شناسه شما را پیدا می‌کنند.');
 
     const copy = document.createElement('button');
     copy.type = 'button';
     copy.className = 'btn';
-    copy.textContent = 'کپی';
+    copy.textContent = t('کپی');
     copy.addEventListener('click', async () => {
       const ok = await copyText(`@${state.me.username}`);
-      toast(ok ? 'شناسه کپی شد.' : 'کپی ممکن نشد؛ دستی انتخابش کنید.', !ok);
+      toast(ok ? t('شناسه کپی شد.') : t('کپی ممکن نشد؛ دستی انتخابش کنید.'), !ok);
     });
 
     const actions = document.createElement('div');
@@ -2824,10 +2871,10 @@
       const share = document.createElement('button');
       share.type = 'button';
       share.className = 'btn';
-      share.textContent = 'اشتراک‌گذاری';
+      share.textContent = t('اشتراک‌گذاری');
       share.addEventListener('click', () => {
         navigator
-          .share({ title: '9chat', text: `شناسه‌ی من در 9chat: @${state.me.username}` })
+          .share({ title: '9chat', text: t('شناسه‌ی من در 9chat: @{username}', { username: state.me.username }) })
           .catch(() => {});
       });
       actions.appendChild(share);
@@ -2870,10 +2917,10 @@
   }
 
   function newChatModal() {
-    openModal('گفتگوی جدید', (body) => {
+    openModal(t('گفتگوی جدید'), (body) => {
       const search = document.createElement('input');
       search.type = 'search';
-      search.placeholder = 'نام کاربری دقیق طرف مقابل…';
+      search.placeholder = t('نام کاربری دقیق طرف مقابل…');
       const results = document.createElement('div');
       results.style.display = 'grid';
       results.style.gap = '8px';
@@ -2881,11 +2928,11 @@
       const hint = document.createElement('p');
       hint.className = 'muted';
       hint.style.margin = '0';
-      hint.textContent = 'برای شروع گفتگو باید نام کاربری دقیق طرف مقابل را بدانید.';
+      hint.textContent = t('برای شروع گفتگو باید نام کاربری دقیق طرف مقابل را بدانید.');
 
       const groupBtn = document.createElement('button');
       groupBtn.className = 'btn';
-      groupBtn.textContent = '👥 ساخت گروه جدید';
+      groupBtn.textContent = t('👥 ساخت گروه جدید');
       groupBtn.addEventListener('click', newGroupModal);
 
       let timer;
@@ -2899,7 +2946,7 @@
             results.innerHTML = '';
             if (data.users.length === 0) {
               results.innerHTML =
-                '<p class="empty-list">کاربری با این نام کاربری پیدا نشد. نام کاربری باید دقیق باشد.</p>';
+                emptyNote(t('کاربری با این نام کاربری پیدا نشد. نام کاربری باید دقیق باشد.')).outerHTML;
               return;
             }
             for (const user of data.users) {
@@ -2934,16 +2981,16 @@
   }
 
   function newGroupModal() {
-    openModal('گروه جدید', (body) => {
+    openModal(t('گروه جدید'), (body) => {
       const selected = new Map();
 
       const title = document.createElement('input');
-      title.placeholder = 'نام گروه';
+      title.placeholder = t('نام گروه');
       title.maxLength = 60;
 
       const search = document.createElement('input');
       search.type = 'search';
-      search.placeholder = 'نام کاربری دقیق عضو تازه…';
+      search.placeholder = t('نام کاربری دقیق عضو تازه…');
 
       const chosen = document.createElement('div');
       chosen.className = 'muted';
@@ -2953,8 +3000,8 @@
 
       const paintChosen = () => {
         chosen.textContent = selected.size
-          ? `اعضا: ${[...selected.values()].map((u) => u.displayName).join('، ')}`
-          : 'هنوز عضوی انتخاب نشده است.';
+          ? t('اعضا: {names}', { names: [...selected.values()].map((u) => u.displayName).join(t('، ')) })
+          : t('هنوز عضوی انتخاب نشده است.');
       };
       paintChosen();
 
@@ -2984,10 +3031,10 @@
 
       const create = document.createElement('button');
       create.className = 'btn btn-primary';
-      create.textContent = 'ساخت گروه';
+      create.textContent = t('ساخت گروه');
       create.addEventListener('click', async () => {
-        if (!title.value.trim()) return toast('نام گروه را بنویسید.', true);
-        if (selected.size === 0) return toast('حداقل یک عضو انتخاب کنید.', true);
+        if (!title.value.trim()) return toast(t('نام گروه را بنویسید.'), true);
+        if (selected.size === 0) return toast(t('حداقل یک عضو انتخاب کنید.'), true);
         try {
           const { conversation } = await api('/conversations/group', {
             method: 'POST',
@@ -3026,11 +3073,11 @@
     const remove = document.createElement('button');
     remove.type = 'button';
     remove.className = 'btn btn-danger';
-    remove.textContent = 'حذف عکس';
+    remove.textContent = t('حذف عکس');
 
     const paint = () => {
       paintAvatar(avatar, state.me.displayName, state.me.avatarColor, false, state.me.avatarUrl);
-      pick.textContent = state.me.avatarUrl ? 'تغییر عکس' : 'انتخاب عکس';
+      pick.textContent = state.me.avatarUrl ? t('تغییر عکس') : t('انتخاب عکس');
       remove.classList.toggle('is-hidden', !state.me.avatarUrl);
     };
     paint();
@@ -3053,7 +3100,7 @@
         state.me = data.user;
         paint();
         renderMe();
-        toast('عکس پروفایل به‌روز شد.');
+        toast(t('عکس پروفایل به‌روز شد.'));
       } catch (err) {
         toast(err.message, true);
       } finally {
@@ -3068,7 +3115,7 @@
         state.me = data.user;
         paint();
         renderMe();
-        toast('عکس پروفایل حذف شد.');
+        toast(t('عکس پروفایل حذف شد.'));
       } catch (err) {
         toast(err.message, true);
       } finally {
@@ -3085,29 +3132,29 @@
 
   /** نام خوانای دستگاه از روی User-Agent. */
   function deviceName(userAgent) {
-    if (!userAgent) return 'دستگاه ناشناس';
+    if (!userAgent) return t('دستگاه ناشناس');
     const ua = userAgent.toLowerCase();
     const platform = ua.includes('android')
-      ? 'اندروید'
+      ? t('اندروید')
       : /iphone|ipad|ipod/.test(ua)
         ? 'iOS'
         : ua.includes('windows')
-          ? 'ویندوز'
+          ? t('ویندوز')
           : ua.includes('mac os')
-            ? 'مک'
+            ? t('مک')
             : ua.includes('linux')
-              ? 'لینوکس'
-              : 'نامشخص';
+              ? t('لینوکس')
+              : t('نامشخص');
     const browser = ua.includes('firefox')
-      ? 'فایرفاکس'
+      ? t('فایرفاکس')
       : ua.includes('edg/')
-        ? 'اج'
+        ? t('اج')
         : ua.includes('chrome')
-          ? 'کروم'
+          ? t('کروم')
           : ua.includes('safari')
-            ? 'سافاری'
-            : 'مرورگر';
-    return `${browser} روی ${platform}`;
+            ? t('سافاری')
+            : t('مرورگر');
+    return t('{browser} روی {platform}', { browser, platform });
   }
 
   /** فهرست دستگاه‌هایی که با این حساب وارد شده‌اند. */
@@ -3118,11 +3165,11 @@
     // جای خالی از پیش گرفته می‌شود: این فهرست با تأخیر از سرور می‌آید و اگر
     // ارتفاعش ناگهان زیاد شود، هرچه زیرش است زیر دست کاربر می‌پرد.
     list.className = 'stack async-list';
-    list.innerHTML = '<p class="muted">در حال بارگذاری…</p>';
+    list.innerHTML = emptyNote(t('در حال بارگذاری…'), 'muted').outerHTML;
 
     const closeOthers = document.createElement('button');
     closeOthers.className = 'btn btn-danger is-hidden';
-    closeOthers.textContent = 'بستن همه‌ی دستگاه‌های دیگر';
+    closeOthers.textContent = t('بستن همه‌ی دستگاه‌های دیگر');
 
     const draw = (sessions) => {
       list.innerHTML = '';
@@ -3136,21 +3183,21 @@
         const when = document.createElement('small');
         when.className = 'muted';
         when.textContent = session.current
-          ? 'همین دستگاه'
-          : `آخرین فعالیت ${relativeTime(session.lastSeenAt)}`;
+          ? t('همین دستگاه')
+          : t('آخرین فعالیت {when}', { when: relativeTime(session.lastSeenAt) });
         main.append(title, when);
         row.appendChild(main);
 
         if (!session.current) {
           const close = document.createElement('button');
           close.className = 'btn';
-          close.textContent = 'بستن';
+          close.textContent = t('بستن');
           close.addEventListener('click', async () => {
             close.disabled = true;
             try {
               await api(`/me/sessions/${session.id}`, { method: 'DELETE' });
               await load();
-              toast('دستگاه بسته شد.');
+              toast(t('دستگاه بسته شد.'));
             } catch (err) {
               toast(err.message, true);
               close.disabled = false;
@@ -3177,12 +3224,12 @@
     };
 
     closeOthers.addEventListener('click', async () => {
-      if (!confirm('همه‌ی دستگاه‌های دیگر از حساب خارج شوند؟')) return;
+      if (!confirm(t('همه‌ی دستگاه‌های دیگر از حساب خارج شوند؟'))) return;
       closeOthers.disabled = true;
       try {
         const data = await api('/me/sessions/others', { method: 'DELETE' });
         await load();
-        toast(`${fa(data.closed)} دستگاه بسته شد.`);
+        toast(t('{n} دستگاه بسته شد.', { n: fa(data.closed) }));
       } catch (err) {
         toast(err.message, true);
       } finally {
@@ -3207,7 +3254,7 @@
       if (users.length === 0) {
         list.appendChild(Object.assign(document.createElement('p'), {
           className: 'muted',
-          textContent: 'کسی را بلاک نکرده‌اید.',
+          textContent: t('کسی را بلاک نکرده‌اید.'),
         }));
         return;
       }
@@ -3215,14 +3262,14 @@
         const row = userRow(user);
         const undo = document.createElement('button');
         undo.className = 'btn';
-        undo.textContent = 'رفع بلاک';
+        undo.textContent = t('رفع بلاک');
         undo.addEventListener('click', async (event) => {
           event.stopPropagation();
           undo.disabled = true;
           try {
             const data = await api(`/me/blocks/${user.id}`, { method: 'DELETE' });
             draw(data.users);
-            toast('رفع بلاک شد.');
+            toast(t('رفع بلاک شد.'));
           } catch (err) {
             toast(err.message, true);
             undo.disabled = false;
@@ -3242,7 +3289,9 @@
 
   /** «1.4» → «۱.۴» — فقط رقم‌ها عوض می‌شوند، نه نقطه‌ها. */
   const faDigits = (text) =>
-    String(text).replace(/[0-9]/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[Number(d)]);
+    i18n.current === 'fa'
+      ? String(text).replace(/[0-9]/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[Number(d)])
+      : String(text);
 
   /** نسخه‌ی برنامه، برای وقتی کاربر یا من بخواهیم بدانیم چه چیزی در دست اوست. */
   function aboutSection() {
@@ -3260,58 +3309,58 @@
     };
 
     const built = state.builtAt
-      ? new Date(state.builtAt).toLocaleDateString('fa-IR', {
+      ? new Date(state.builtAt).toLocaleDateString(i18n.localeOf(), {
           year: 'numeric', month: 'long', day: 'numeric',
         })
       : '—';
-    wrap.appendChild(line('نسخه‌ی وب', `${built} (${state.clientVersion || '—'})`));
+    wrap.appendChild(line(t('نسخه‌ی وب'), `${built} (${state.clientVersion || '—'})`));
 
     // نسخه‌ی اپ را فقط خود اپ می‌داند، و آن هم از ۱.۴ به بعد.
     const installed = window.AndroidBridge?.appVersion?.();
     if (installed) {
-      wrap.appendChild(line('اپ اندروید', faDigits(installed)));
+      wrap.appendChild(line(t('اپ اندروید'), faDigits(installed)));
     } else if (window.AndroidBridge) {
       const hint = document.createElement('small');
       hint.className = 'muted';
       hint.textContent =
-        'نسخه‌ی اپ را اینجا نشان نمی‌دهد چون نسخه‌ی نصب‌شده قدیمی‌تر از ۱.۴ است؛ ' +
-        'از تنظیمات گوشی ← برنامه‌ها ← 9chat ببینیدش.';
+        t('نسخه‌ی اپ را اینجا نشان نمی‌دهد چون نسخه‌ی نصب‌شده قدیمی‌تر از ۱.۴ است؛ ') +
+        t('از تنظیمات گوشی ← برنامه‌ها ← 9chat ببینیدش.');
       wrap.appendChild(hint);
     }
 
     const copy = document.createElement('button');
     copy.type = 'button';
     copy.className = 'btn';
-    copy.textContent = 'کپی اطلاعات نسخه';
+    copy.textContent = t('کپی اطلاعات نسخه');
     copy.addEventListener('click', async () => {
       const text = [
-        `نسخه‌ی وب: ${state.clientVersion || '—'} (${built})`,
-        installed ? `اپ اندروید: ${installed}` : null,
-        `APK روی سرور: ${state.androidVersion || '—'}`,
+        t('نسخه‌ی وب: {version} ({built})', { version: state.clientVersion || '—', built }),
+        installed ? t('اپ اندروید: {version}', { version: installed }) : null,
+        t('APK روی سرور: {version}', { version: state.androidVersion || '—' }),
       ]
         .filter(Boolean)
         .join('\n');
       const ok = await copyText(text);
-      toast(ok ? 'اطلاعات نسخه کپی شد.' : 'کپی ممکن نشد.', !ok);
+      toast(ok ? t('اطلاعات نسخه کپی شد.') : t('کپی ممکن نشد.'), !ok);
     });
     wrap.appendChild(copy);
     return wrap;
   }
 
   function profileModal() {
-    openModal('پروفایل', (body) => {
+    openModal(t('پروفایل'), (body) => {
       const photo = avatarEditor();
       const name = document.createElement('input');
       name.value = state.me.displayName;
       name.maxLength = 40;
       const bio = document.createElement('input');
       bio.value = state.me.bio || '';
-      bio.placeholder = 'درباره من';
+      bio.placeholder = t('درباره من');
       bio.maxLength = 200;
 
       const save = document.createElement('button');
       save.className = 'btn btn-primary';
-      save.textContent = 'ذخیره';
+      save.textContent = t('ذخیره');
       save.addEventListener('click', async () => {
         try {
           const data = await api('/me', {
@@ -3321,7 +3370,7 @@
           state.me = data.user;
           renderMe();
           closeModal();
-          toast('پروفایل به‌روز شد.');
+          toast(t('پروفایل به‌روز شد.'));
         } catch (err) {
           toast(err.message, true);
         }
@@ -3331,20 +3380,20 @@
 
       const currentPassword = document.createElement('input');
       currentPassword.type = 'password';
-      currentPassword.placeholder = 'رمز فعلی';
+      currentPassword.placeholder = t('رمز فعلی');
       currentPassword.autocomplete = 'current-password';
 
       const newPassword = document.createElement('input');
       newPassword.type = 'password';
-      newPassword.placeholder = 'رمز تازه (حداقل ۸ نویسه)';
+      newPassword.placeholder = t('رمز تازه (حداقل ۸ نویسه)');
       newPassword.autocomplete = 'new-password';
 
       const changePassword = document.createElement('button');
       changePassword.className = 'btn';
-      changePassword.textContent = 'تغییر رمز';
+      changePassword.textContent = t('تغییر رمز');
       changePassword.addEventListener('click', async () => {
         if (!currentPassword.value || !newPassword.value) {
-          return toast('هر دو رمز را پر کنید.', true);
+          return toast(t('هر دو رمز را پر کنید.'), true);
         }
         changePassword.disabled = true;
         try {
@@ -3372,12 +3421,12 @@
 
       const notifyBtn = document.createElement('button');
       notifyBtn.className = 'btn';
-      notifyBtn.textContent = '🔔 فعال‌سازی اعلان‌ها';
+      notifyBtn.textContent = t('🔔 فعال‌سازی اعلان‌ها');
       notifyBtn.addEventListener('click', () => requestNotificationPermission({ force: true }));
 
       const logout = document.createElement('button');
       logout.className = 'btn btn-danger';
-      logout.textContent = 'خروج از حساب';
+      logout.textContent = t('خروج از حساب');
       logout.addEventListener('click', async () => {
         await api('/auth/logout', { method: 'POST' }).catch(() => {});
         closeModal();
@@ -3387,23 +3436,23 @@
       body.append(
         photo,
         myHandleBox(),
-        labeled('نام نمایشی', name, 'همین نامی که دیگران می‌بینند.'),
-        labeled('درباره‌ی من', bio),
+        labeled(t('نام نمایشی'), name, t('همین نامی که دیگران می‌بینند.')),
+        labeled(t('درباره‌ی من'), bio),
         save,
-        sectionTitle('ظاهر'),
+        sectionTitle(t('ظاهر')),
         appearanceSection(),
-        sectionTitle('تغییر رمز عبور'),
-        labeled('رمز فعلی', currentPassword),
-        labeled('رمز تازه', newPassword, 'حداقل ۸ نویسه.'),
+        sectionTitle(t('تغییر رمز عبور')),
+        labeled(t('رمز فعلی'), currentPassword),
+        labeled(t('رمز تازه'), newPassword, t('حداقل ۸ نویسه.')),
         changePassword,
-        sectionTitle('دستگاه‌های واردشده'),
+        sectionTitle(t('دستگاه‌های واردشده')),
         devicesSection(),
-        sectionTitle('کاربران بلاک‌شده'),
+        sectionTitle(t('کاربران بلاک‌شده')),
         blockedSection(),
-        sectionTitle('سایر'),
+        sectionTitle(t('سایر')),
         notifyBtn,
         logout,
-        sectionTitle('درباره‌ی برنامه'),
+        sectionTitle(t('درباره‌ی برنامه')),
         aboutSection()
       );
     });
@@ -3428,12 +3477,12 @@
     const remove = document.createElement('button');
     remove.type = 'button';
     remove.className = 'btn btn-danger';
-    remove.textContent = 'حذف عکس';
+    remove.textContent = t('حذف عکس');
 
     let current = conv;
     const paint = () => {
       paintAvatar(avatar, current.title, current.avatarColor, false, current.avatarUrl);
-      pick.textContent = current.avatarUrl ? 'تغییر عکس گروه' : 'انتخاب عکس گروه';
+      pick.textContent = current.avatarUrl ? t('تغییر عکس گروه') : t('انتخاب عکس گروه');
       remove.classList.toggle('is-hidden', !current.avatarUrl);
     };
     paint();
@@ -3460,7 +3509,7 @@
           raw: true,
         });
         apply(data.conversation);
-        toast('عکس گروه به‌روز شد.');
+        toast(t('عکس گروه به‌روز شد.'));
       } catch (err) {
         toast(err.message, true);
       } finally {
@@ -3473,7 +3522,7 @@
       try {
         const data = await api(`/conversations/${conv.id}/avatar`, { method: 'DELETE' });
         apply(data.conversation);
-        toast('عکس گروه حذف شد.');
+        toast(t('عکس گروه حذف شد.'));
       } catch (err) {
         toast(err.message, true);
       } finally {
@@ -3487,15 +3536,15 @@
 
     const rename = document.createElement('button');
     rename.className = 'btn';
-    rename.textContent = 'ذخیره‌ی نام';
+    rename.textContent = t('ذخیره‌ی نام');
     rename.addEventListener('click', async () => {
       const title = name.value.trim();
-      if (!title) return toast('نام گروه خالی است.', true);
+      if (!title) return toast(t('نام گروه خالی است.'), true);
       rename.disabled = true;
       try {
         const data = await api(`/conversations/${conv.id}`, { method: 'PATCH', body: { title } });
         apply(data.conversation);
-        toast('نام گروه به‌روز شد.');
+        toast(t('نام گروه به‌روز شد.'));
       } catch (err) {
         toast(err.message, true);
       } finally {
@@ -3509,7 +3558,7 @@
 
     const rest = document.createElement('div');
     rest.className = 'group-editor-fields';
-    rest.append(labeled('نام گروه', name), rename);
+    rest.append(labeled(t('نام گروه'), name), rename);
 
     wrap.append(avatar, buttons, file, rest);
     return wrap;
@@ -3520,10 +3569,10 @@
     try {
       const data = await api(`/conversations/${conv.id}/flags`, { method: 'POST', body: patch });
       upsertConversation(data.conversation);
-      if ('pinned' in patch) toast(patch.pinned ? 'سنجاق شد.' : 'سنجاق برداشته شد.');
-      else if ('muted' in patch) toast(patch.muted ? 'بی‌صدا شد.' : 'صدا روشن شد.');
-      else if ('archived' in patch) toast(patch.archived ? 'بایگانی شد.' : 'از بایگانی خارج شد.');
-      else toast('خوانده‌نشده شد.');
+      if ('pinned' in patch) toast(patch.pinned ? t('سنجاق شد.') : t('سنجاق برداشته شد.'));
+      else if ('muted' in patch) toast(patch.muted ? t('بی‌صدا شد.') : t('صدا روشن شد.'));
+      else if ('archived' in patch) toast(patch.archived ? t('بایگانی شد.') : t('از بایگانی خارج شد.'));
+      else toast(t('خوانده‌نشده شد.'));
     } catch (err) {
       toast(err.message, true);
     }
@@ -3533,7 +3582,7 @@
     const conv = state.conversations.get(state.activeId);
     if (!conv) return;
 
-    openModal(conv.type === 'group' ? 'اطلاعات گروه' : 'اطلاعات مخاطب', (body) => {
+    openModal(conv.type === 'group' ? t('اطلاعات گروه') : t('اطلاعات مخاطب'), (body) => {
       const heading = document.createElement('div');
       heading.style.display = 'flex';
       heading.style.gap = '10px';
@@ -3552,7 +3601,7 @@
         const gone = document.createElement('p');
         gone.className = 'muted';
         gone.textContent =
-          'حساب طرف مقابل حذف شده است. می‌توانید این گفتگو را از فهرست خود پاک کنید.';
+          t('حساب طرف مقابل حذف شده است. می‌توانید این گفتگو را از فهرست خود پاک کنید.');
         body.appendChild(gone);
       }
 
@@ -3566,14 +3615,14 @@
       if (conv.type === 'direct' && conv.peer) {
         const block = document.createElement('button');
         block.className = 'btn btn-danger';
-        block.textContent = '🚫 بلاک کردن این کاربر';
+        block.textContent = t('🚫 بلاک کردن این کاربر');
         block.addEventListener('click', async () => {
-          if (!confirm(`${conv.peer.displayName} بلاک شود؟ دیگر نمی‌توانید به هم پیام بدهید.`)) return;
+          if (!confirm(t('{name} بلاک شود؟ دیگر نمی‌توانید به هم پیام بدهید.', { name: conv.peer.displayName }))) return;
           block.disabled = true;
           try {
             await api('/me/blocks', { method: 'POST', body: { username: conv.peer.username } });
             closeModal();
-            toast('کاربر بلاک شد. از پروفایل می‌توانید رفع بلاکش کنید.');
+            toast(t('کاربر بلاک شد. از پروفایل می‌توانید رفع بلاکش کنید.'));
           } catch (err) {
             toast(err.message, true);
             block.disabled = false;
@@ -3584,16 +3633,16 @@
 
       const removeChat = document.createElement('button');
       removeChat.className = 'btn btn-danger';
-      removeChat.textContent = '🗑 حذف گفتگو (فقط برای من)';
+      removeChat.textContent = t('🗑 حذف گفتگو (فقط برای من)');
       removeChat.addEventListener('click', async () => {
-        if (!confirm('این گفتگو از فهرست شما پاک شود؟ طرف مقابل نسخه‌ی خودش را خواهد داشت.')) return;
+        if (!confirm(t('این گفتگو از فهرست شما پاک شود؟ طرف مقابل نسخه‌ی خودش را خواهد داشت.'))) return;
         try {
           await api(`/conversations/${conv.id}`, { method: 'DELETE' });
           state.conversations.delete(conv.id);
           closeModal();
           if (state.activeId === conv.id) closeChat();
           renderConversations();
-          toast('گفتگو پاک شد.');
+          toast(t('گفتگو پاک شد.'));
         } catch (err) {
           toast(err.message, true);
         }
@@ -3606,18 +3655,18 @@
         const iAmStaff = iAmOwner || myRole === 'admin';
 
         if (iAmStaff) {
-          body.append(groupEditor(conv), sectionTitle('اعضا'));
+          body.append(groupEditor(conv), sectionTitle(t('اعضا')));
         }
 
         for (const member of conv.members) {
           const row = userRow(member);
-          if (member.role === 'owner') row.querySelector('small').append(' — سازنده');
-          else if (member.role === 'admin') row.querySelector('small').append(' — مدیر گروه');
+          if (member.role === 'owner') row.querySelector('small').append(t(' — سازنده'));
+          else if (member.role === 'admin') row.querySelector('small').append(t(' — مدیر گروه'));
           if (iAmOwner && member.id !== state.me.id) {
             const roleBtn = document.createElement('button');
             roleBtn.type = 'button';
             roleBtn.className = 'btn';
-            roleBtn.textContent = member.role === 'admin' ? 'برداشتن مدیریت' : 'مدیر گروه';
+            roleBtn.textContent = member.role === 'admin' ? t('برداشتن مدیریت') : t('مدیر گروه');
             roleBtn.addEventListener('click', async (event) => {
               event.stopPropagation();
               roleBtn.disabled = true;
@@ -3628,7 +3677,7 @@
                 });
                 upsertConversation(data.conversation);
                 closeModal();
-                toast('نقش عضو به‌روز شد.');
+                toast(t('نقش عضو به‌روز شد.'));
               } catch (err) {
                 toast(err.message, true);
                 roleBtn.disabled = false;
@@ -3640,12 +3689,12 @@
             const kick = document.createElement('button');
             kick.type = 'button';
             kick.className = 'row-remove';
-            kick.title = 'حذف از گروه';
-            kick.setAttribute('aria-label', `حذف ${member.displayName} از گروه`);
+            kick.title = t('حذف از گروه');
+            kick.setAttribute('aria-label', t('حذف {name} از گروه', { name: member.displayName }));
             kick.textContent = '✕';
             kick.addEventListener('click', async (event) => {
               event.stopPropagation();
-              if (!confirm(`${member.displayName} از گروه حذف شود؟`)) return;
+              if (!confirm(t('{name} از گروه حذف شود؟', { name: member.displayName }))) return;
               kick.disabled = true;
               try {
                 const data = await api(`/conversations/${conv.id}/members/${member.id}`, {
@@ -3653,7 +3702,7 @@
                 });
                 upsertConversation(data.conversation);
                 closeModal();
-                toast('عضو حذف شد.');
+                toast(t('عضو حذف شد.'));
               } catch (err) {
                 toast(err.message, true);
                 kick.disabled = false;
@@ -3667,16 +3716,16 @@
         if (iAmStaff) {
           const add = document.createElement('button');
           add.className = 'btn';
-          add.textContent = '➕ افزودن عضو';
+          add.textContent = t('➕ افزودن عضو');
           add.addEventListener('click', () => addMemberModal(conv));
           body.appendChild(add);
         }
 
         const leave = document.createElement('button');
         leave.className = 'btn btn-danger';
-        leave.textContent = 'خروج از گروه';
+        leave.textContent = t('خروج از گروه');
         leave.addEventListener('click', async () => {
-          if (!confirm('از این گروه خارج می‌شوید؟')) return;
+          if (!confirm(t('از این گروه خارج می‌شوید؟'))) return;
           try {
             await api(`/conversations/${conv.id}/members/me`, { method: 'DELETE' });
             state.conversations.delete(conv.id);
@@ -3695,10 +3744,10 @@
   }
 
   function addMemberModal(conv) {
-    openModal('افزودن عضو', (body) => {
+    openModal(t('افزودن عضو'), (body) => {
       const search = document.createElement('input');
       search.type = 'search';
-      search.placeholder = 'نام کاربری دقیق…';
+      search.placeholder = t('نام کاربری دقیق…');
       const results = document.createElement('div');
       results.style.display = 'grid';
       results.style.gap = '8px';
@@ -3723,7 +3772,7 @@
                     });
                     upsertConversation(data.conversation);
                     closeModal();
-                    toast('عضو اضافه شد.');
+                    toast(t('عضو اضافه شد.'));
                   } catch (err) {
                     toast(err.message, true);
                   }
@@ -3765,7 +3814,9 @@
   async function showWipeInfo() {
     try {
       const health = await fetch('/api/health').then((r) => r.json());
-      $('wipeInfo').textContent = health.retentionNotice || '';
+      // متن از سرور می‌آید؛ اگر همان پیش‌فرض باشد ترجمه‌اش را داریم، و اگر
+      // مدیر متن دلخواهی گذاشته باشد t() همان را دست‌نخورده برمی‌گرداند.
+      $('wipeInfo').textContent = health.retentionNotice ? t(health.retentionNotice) : '';
     } catch {
       /* نمایش این اطلاعات اختیاری است */
     }
@@ -3792,8 +3843,8 @@
   $('forgotPassword').addEventListener('click', (event) => {
     event.preventDefault();
     setAuthMessage(
-      '9chat ایمیل و شماره‌ی شما را نمی‌گیرد، پس بازیابی خودکار رمز ممکن نیست. ' +
-        'از مدیر بخواهید از پنل مدیریت برایتان رمز تازه بگذارد.',
+      t('9chat ایمیل و شماره‌ی شما را نمی‌گیرد، پس بازیابی خودکار رمز ممکن نیست. ') +
+        t('از مدیر بخواهید از پنل مدیریت برایتان رمز تازه بگذارد.'),
       ''
     );
   });
@@ -3805,7 +3856,7 @@
       const shown = input.type === 'text';
       input.type = shown ? 'password' : 'text';
       button.classList.toggle('is-on', !shown);
-      button.setAttribute('aria-label', shown ? 'نمایش رمز' : 'پنهان کردن رمز');
+      button.setAttribute('aria-label', shown ? t('نمایش رمز') : t('پنهان کردن رمز'));
     });
   }
 
@@ -3816,9 +3867,9 @@
       .filter((m) => state.picked.has(m.id) && m.body)
       .map((m) => `${senderName(m.senderId)}: ${m.body}`)
       .join('\n');
-    if (!text) return toast('متنی برای کپی نیست.', true);
+    if (!text) return toast(t('متنی برای کپی نیست.'), true);
     const ok = await copyText(text);
-    toast(ok ? 'متن‌ها کپی شدند.' : 'کپی ممکن نشد.', !ok);
+    toast(ok ? t('متن‌ها کپی شدند.') : t('کپی ممکن نشد.'), !ok);
     if (ok) clearPicks();
   });
 
@@ -3836,7 +3887,7 @@
     const input = $('messageInput');
     const at = input.selectionStart ?? input.value.length;
 
-    openModal('ایموجی', (body) => {
+    openModal(t('ایموجی'), (body) => {
       const grid = document.createElement('div');
       grid.className = 'emoji-grid';
       for (const emoji of EMOJIS) {
@@ -3898,7 +3949,7 @@
     }
     const title = document.createElement('div');
     title.className = 'hits-title';
-    title.textContent = `${fa(messages.length)} پیام پیدا شد`;
+    title.textContent = t('{n} پیام پیدا شد', { n: fa(messages.length) });
     box.appendChild(title);
 
     for (const message of messages) {
@@ -3910,7 +3961,7 @@
       where.textContent =
         message.conversationTitle ||
         state.conversations.get(message.conversationId)?.title ||
-        'گفتگو';
+        t('گفتگو');
       const text = document.createElement('span');
       text.textContent = message.kind === 'image' ? `🖼 ${message.body}` : message.body;
       const when = document.createElement('small');
@@ -3997,7 +4048,7 @@
     }
     const label = document.createElement('span');
     label.className = 'story-label';
-    label.textContent = mine ? 'استوری من' : 'افزودن';
+    label.textContent = mine ? t('استوری من') : t('افزودن');
     own.append(ring, label);
     own.addEventListener('click', () => {
       if (mine) openStories(groups.indexOf(mine));
@@ -4091,11 +4142,11 @@
     try {
       const data = await api(`/stories/${storyId}/viewers`);
       $('storyViewers').textContent = data.users.length
-        ? `👁 ${fa(data.users.length)} بیننده`
-        : '👁 هنوز کسی ندیده';
+        ? t('👁 {n} بیننده', { n: fa(data.users.length) })
+        : t('👁 هنوز کسی ندیده');
       $('storyViewers').onclick = () => {
         if (data.users.length === 0) return;
-        openModal('بیننده‌های استوری', (body) => {
+        openModal(t('بیننده‌های استوری'), (body) => {
           for (const user of data.users) body.appendChild(userRow(user));
         });
       };
@@ -4138,12 +4189,12 @@
   $('storyDelete').addEventListener('click', async () => {
     const group = state.stories[story.groupIndex];
     const item = group?.items[story.itemIndex];
-    if (!item || !confirm('این استوری حذف شود؟')) return;
+    if (!item || !confirm(t('این استوری حذف شود؟'))) return;
     try {
       const data = await api(`/stories/${item.id}`, { method: 'DELETE' });
       state.stories = data.stories;
       closeStories();
-      toast('استوری حذف شد.');
+      toast(t('استوری حذف شد.'));
     } catch (err) {
       toast(err.message, true);
     }
@@ -4160,16 +4211,16 @@
       const data = await api('/stories', { method: 'POST', body: form, raw: true });
       state.stories = data.stories;
       renderStories();
-      toast('استوری شما تا ۲۴ ساعت دیده می‌شود.');
+      toast(t('استوری شما تا ۲۴ ساعت دیده می‌شود.'));
     } catch (err) {
-      toast(err.message || 'فرستادن استوری ناموفق بود.', true);
+      toast(err.message || t('فرستادن استوری ناموفق بود.'), true);
     }
   });
 
   /** استوری را کوچک می‌کند؛ لازم نیست تمام‌اندازه باشد. */
   async function prepareStoryImage(file) {
     const bitmap = await createImageBitmap(file).catch(() => null);
-    if (!bitmap) throw new Error('این فایل عکس نیست.');
+    if (!bitmap) throw new Error(t('این فایل عکس نیست.'));
     const scale = Math.min(1, 1080 / Math.max(bitmap.width, bitmap.height));
     const canvas = document.createElement('canvas');
     canvas.width = Math.round(bitmap.width * scale);
@@ -4177,7 +4228,7 @@
     canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
     bitmap.close?.();
     const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.85));
-    if (!blob) throw new Error('آماده‌سازی عکس ممکن نشد.');
+    if (!blob) throw new Error(t('آماده‌سازی عکس ممکن نشد.'));
     return blob;
   }
 
@@ -4229,8 +4280,8 @@
 
     if (data.client !== state.clientVersion && !state.updateDismissed) {
       showUpdateBar({
-        text: 'نسخه‌ی تازه‌ای از برنامه آمده است.',
-        action: 'تازه‌سازی',
+        text: t('نسخه‌ی تازه‌ای از برنامه آمده است.'),
+        action: t('تازه‌سازی'),
         onClick: () => location.reload(),
       });
       return;
@@ -4240,8 +4291,8 @@
     const installed = window.AndroidBridge?.appVersion?.();
     if (installed && isNewer(data.android, installed) && !state.updateDismissed) {
       showUpdateBar({
-        text: `نسخه‌ی ${faDigits(data.android)} اپ اندروید آمده است (شما ${faDigits(installed)} دارید).`,
-        action: 'دریافت',
+        text: t('نسخه‌ی {version} اپ اندروید آمده است (شما {installed} دارید).', { version: faDigits(data.android), installed: faDigits(installed) }),
+        action: t('دریافت'),
         onClick: () => {
           window.open('/app.apk', '_blank');
         },
@@ -4290,8 +4341,8 @@
       if (data.user.status !== 'approved') {
         signOut(
           data.user.status === 'blocked'
-            ? 'حساب شما مسدود شده است.'
-            : 'حساب شما هنوز توسط مدیر تایید نشده است.'
+            ? t('حساب شما مسدود شده است.')
+            : t('حساب شما هنوز توسط مدیر تایید نشده است.')
         );
         return;
       }

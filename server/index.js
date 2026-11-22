@@ -25,7 +25,7 @@ const APK_DIR = process.env.APK_DIR || path.join(__dirname, '..', 'dist');
  * عوض کردن یک تنظیم نباید به همه بگوید «نسخه‌ی تازه آمده». فقط وقتی عوض
  * می‌شود که واقعاً کد سمت کاربر عوض شده باشد.
  */
-const CLIENT_FILES = ['index.html', 'js/app.js', 'css/style.css', 'sw.js'];
+const CLIENT_FILES = ['index.html', 'js/app.js', 'js/i18n.js', 'css/style.css', 'sw.js'];
 
 const CLIENT_VERSION = (() => {
   const hash = crypto.createHash('sha256');

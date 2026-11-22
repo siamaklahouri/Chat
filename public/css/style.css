@@ -756,7 +756,8 @@ html[dir='rtl'] .conversation.is-active { box-shadow: inset -3px 0 0 var(--accen
 }
 .send-btn:disabled { opacity: .5; }
 /* آیکون هواپیما در چیدمان راست‌چین باید به سمت چپ نشانه برود. */
-.send-btn svg { transform: scaleX(-1); }
+/* فلش ارسال و بازگشت هر دو به سمتی اشاره می‌کنند که متن به آن می‌رود. */
+html[dir='rtl'] .send-btn svg { transform: scaleX(-1); }
 /* فلش بازگشت در چیدمان راست‌چین باید به راست اشاره کند، نه چپ. */
 html[dir='rtl'] #backBtn svg { transform: scaleX(-1); }
 

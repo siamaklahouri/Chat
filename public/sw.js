@@ -6,12 +6,13 @@
  * به کاربری که یک بار سایت را باز کرده بود نرسد. حالا همیشه نسخه‌ی تازه گرفته
  * می‌شود و کش فقط وقتی به کار می‌آید که شبکه در دسترس نباشد.
  */
-const CACHE = '9chat-shell-v5';
+const CACHE = '9chat-shell-v6';
 const SHELL = [
   '/',
   '/index.html',
   '/css/style.css',
   '/js/app.js',
+  '/js/i18n.js',
   '/manifest.webmanifest',
   '/icons/icon-192.png',
   '/fonts/outfit-600-latin.woff2',
