@@ -31,6 +31,7 @@
     clientVersion: null,
     androidVersion: null,
     builtAt: null,
+    stories: [],
     updateDismissed: false,
     typingTimer: null,
     typingSentAt: 0,
@@ -102,31 +103,134 @@
   /* ------------------------------ تم ظاهری ------------------------------ */
 
   /**
-   * سه حالت دارد: «خودکار» (پیروی از سیستم‌عامل، پیش‌فرض) و دو حالت دستی.
-   * انتخاب دستی در همین مرورگر می‌ماند؛ CSS بقیه‌ی کار را می‌کند.
+   * تم سه حالت دارد: «خودکار» (پیروی از سیستم‌عامل، پیش‌فرض) و دو حالت دستی.
+   * هر سه انتخابِ ظاهری در همین مرورگر می‌ماند — روی سرور ذخیره نمی‌شود، پس
+   * چیزی به حساب کاربر اضافه نمی‌کند و روی هر دستگاه جداگانه است.
    */
   const THEME_KEY = 'messenger.theme';
-
-  const systemPrefersLight = () =>
-    window.matchMedia?.('(prefers-color-scheme: light)').matches ?? false;
 
   function applyTheme(theme) {
     if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
     else delete document.documentElement.dataset.theme;
   }
 
-  function toggleTheme() {
-    const stored = localStorage.getItem(THEME_KEY);
-    const effective = stored || (systemPrefersLight() ? 'light' : 'dark');
-    const next = effective === 'light' ? 'dark' : 'light';
-    // اگر انتخاب تازه همان سلیقه‌ی سیستم باشد، به حالت خودکار برمی‌گردیم.
-    if (next === (systemPrefersLight() ? 'light' : 'dark')) localStorage.removeItem(THEME_KEY);
-    else localStorage.setItem(THEME_KEY, next);
-    applyTheme(localStorage.getItem(THEME_KEY));
-    toast(next === 'light' ? 'تم روشن' : 'تم تیره');
+  /* رنگ لهجه و پس‌زمینه‌ی گفتگو. هر دو فقط یک data-attribute روی <html>
+     می‌گذارند؛ CSS بقیه‌ی توکن‌ها را از همان‌ها می‌سازد. */
+  const ACCENT_KEY = 'messenger.accent';
+  const WALL_KEY = 'messenger.wall';
+
+  const ACCENTS = [
+    ['indigo', 'بنفش‌آبی'],
+    ['violet', 'بنفش'],
+    ['blue', 'آبی'],
+    ['teal', 'فیروزه‌ای'],
+    ['rose', 'سرخابی'],
+    ['amber', 'کهربایی'],
+  ];
+
+  const WALLS = [
+    ['aurora', 'شفق'],
+    ['mesh', 'مه رنگی'],
+    ['sunset', 'غروب'],
+    ['night', 'شب'],
+    ['dots', 'نقطه‌چین'],
+    ['grid', 'شبکه'],
+    ['waves', 'راه‌راه'],
+    ['plain', 'ساده'],
+  ];
+
+  const DEFAULT_ACCENT = 'indigo';
+  const DEFAULT_WALL = 'mesh';
+
+  const storedAccent = () => localStorage.getItem(ACCENT_KEY) || DEFAULT_ACCENT;
+  const storedWall = () => localStorage.getItem(WALL_KEY) || DEFAULT_WALL;
+
+  function applyAccent(name) {
+    document.documentElement.dataset.accent =
+      ACCENTS.some(([id]) => id === name) ? name : DEFAULT_ACCENT;
+  }
+
+  function applyWall(name) {
+    document.documentElement.dataset.wall =
+      WALLS.some(([id]) => id === name) ? name : DEFAULT_WALL;
+  }
+
+  /** پنجره‌ی «ظاهر»: تم، رنگ لهجه و پس‌زمینه در یک جا. */
+  function appearanceModal() {
+    openModal('ظاهر', (body) => {
+      const section = (heading, className) => {
+        const wrap = document.createElement('div');
+        wrap.className = 'look-section';
+        const title = document.createElement('h4');
+        title.textContent = heading;
+        const row = document.createElement('div');
+        row.className = className;
+        wrap.append(title, row);
+        body.appendChild(wrap);
+        return row;
+      };
+
+      // ---- تم
+      const themeRow = section('تم', 'look-row');
+      const current = localStorage.getItem(THEME_KEY) || 'auto';
+      for (const [value, label] of [['auto', 'خودکار'], ['light', 'روشن'], ['dark', 'تیره']]) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = label;
+        button.classList.toggle('is-active', value === current);
+        button.addEventListener('click', () => {
+          if (value === 'auto') localStorage.removeItem(THEME_KEY);
+          else localStorage.setItem(THEME_KEY, value);
+          applyTheme(localStorage.getItem(THEME_KEY));
+          for (const sibling of themeRow.children) sibling.classList.remove('is-active');
+          button.classList.add('is-active');
+        });
+        themeRow.appendChild(button);
+      }
+
+      // ---- رنگ لهجه
+      const accentRow = section('رنگ', 'swatches');
+      for (const [id, label] of ACCENTS) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'swatch';
+        button.dataset.accent = id;
+        button.title = label;
+        button.setAttribute('aria-label', `رنگ ${label}`);
+        button.classList.toggle('is-active', id === storedAccent());
+        button.addEventListener('click', () => {
+          localStorage.setItem(ACCENT_KEY, id);
+          applyAccent(id);
+          for (const sibling of accentRow.children) sibling.classList.remove('is-active');
+          button.classList.add('is-active');
+        });
+        accentRow.appendChild(button);
+      }
+
+      // ---- پس‌زمینه‌ی گفتگو
+      const wallRow = section('پس‌زمینه‌ی گفتگو', 'walls');
+      for (const [id, label] of WALLS) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'wall-chip';
+        button.dataset.wall = id;
+        button.title = label;
+        button.setAttribute('aria-label', `پس‌زمینه‌ی ${label}`);
+        button.classList.toggle('is-active', id === storedWall());
+        button.addEventListener('click', () => {
+          localStorage.setItem(WALL_KEY, id);
+          applyWall(id);
+          for (const sibling of wallRow.children) sibling.classList.remove('is-active');
+          button.classList.add('is-active');
+        });
+        wallRow.appendChild(button);
+      }
+    });
   }
 
   applyTheme(localStorage.getItem(THEME_KEY));
+  applyAccent(storedAccent());
+  applyWall(storedWall());
 
   /**
    * نشانی فایل با توکن کوتاه‌عمرِ مخصوص فایل ساخته می‌شود — نه با توکن نشست،
@@ -1080,6 +1184,10 @@
       renderConversations();
       markConversationRead();
       loadDraft(id);
+      // روی موبایل گفتگو تمام صفحه را می‌گیرد، پس باید با بازگشت بسته شود.
+      if (onNarrowScreen() && !overlays.some((o) => o.name === 'chat')) {
+        pushOverlay('chat', closeChat);
+      }
       $('messageInput').focus({ preventScroll: true });
     } catch (err) {
       toast(err.message, true);
@@ -1565,17 +1673,26 @@
     }
   }
 
+  function hideLightbox() {
+    $('lightbox').classList.add('is-hidden');
+    $('lightboxImg').removeAttribute('src');
+  }
+
+  function closeLightbox() {
+    if (!closeOverlay('lightbox')) hideLightbox();
+  }
+
   function openLightbox(attachment) {
     $('lightboxImg').src = fileUrl(attachment.url);
     $('lightboxDownload').href = `${fileUrl(attachment.url)}&download=1`;
     $('lightboxDownload').setAttribute('download', attachment.name || 'image');
     $('lightbox').classList.remove('is-hidden');
+    pushOverlay('lightbox', hideLightbox);
   }
 
   $('lightbox').addEventListener('click', (event) => {
     if (event.target.closest('.lightbox-download')) return;
-    $('lightbox').classList.add('is-hidden');
-    $('lightboxImg').removeAttribute('src');
+    closeLightbox();
   });
 
   /* ------------------------------ وب‌سوکت ------------------------------ */
@@ -1680,6 +1797,10 @@
         }
         break;
       }
+
+      case 'story:new':
+        loadStories();
+        break;
 
       case 'conversation:updated': {
         upsertConversation(event.conversation);
@@ -2418,9 +2539,51 @@
     body.innerHTML = '';
     build(body);
     $('modalRoot').classList.remove('is-hidden');
+    pushOverlay('modal', hideModal);
   }
 
-  const closeModal = () => $('modalRoot').classList.add('is-hidden');
+  /* --------------------------- دکمه‌ی بازگشت --------------------------- */
+
+  /**
+   * هر چیزی که روی صفحه باز می‌شود (پنجره، گفتگو روی موبایل، نمای بزرگ عکس)
+   * یک ورودی در تاریخچه‌ی مرورگر می‌گذارد.
+   *
+   * بدون این، دکمه‌ی بازگشت گوشی مستقیم از برنامه بیرون می‌انداخت — چون
+   * WebView چیزی برای برگشتن نداشت. حالا بازگشت همان لایه‌ی بالایی را
+   * می‌بندد، و فقط وقتی چیزی باز نباشد از برنامه خارج می‌شود.
+   */
+  const overlays = [];
+
+  function pushOverlay(name, close) {
+    overlays.push({ name, close });
+    try {
+      history.pushState({ overlay: overlays.length }, '');
+    } catch {
+      /* در بعضی حالت‌ها تاریخچه در دسترس نیست؛ برنامه باید کار کند */
+    }
+  }
+
+  /** بستن از راه رابط کاربری: تاریخچه را عقب می‌برد تا هماهنگ بماند. */
+  function closeOverlay(name) {
+    const index = overlays.findIndex((o) => o.name === name);
+    if (index === -1) return false;
+    // هر چه روی آن باز شده هم باید بسته شود.
+    const steps = overlays.length - index;
+    history.go(-steps);
+    return true;
+  }
+
+  window.addEventListener('popstate', () => {
+    const top = overlays.pop();
+    if (top) top.close();
+  });
+
+  const hideModal = () => $('modalRoot').classList.add('is-hidden');
+
+  /** بستن پنجره از راه دکمه‌ی ✕ یا Escape. */
+  function closeModal() {
+    if (!closeOverlay('modal')) hideModal();
+  }
   document.querySelectorAll('[data-close-modal]').forEach((el) =>
     el.addEventListener('click', closeModal)
   );
@@ -3420,6 +3583,13 @@
 
   /* -------------------------------- راه‌اندازی ---------------------------- */
 
+  const onNarrowScreen = () => window.matchMedia('(max-width: 820px)').matches;
+
+  /** بستن گفتگو از راه دکمه‌ی بازگشت خود برنامه. */
+  function leaveChat() {
+    if (!closeOverlay('chat')) closeChat();
+  }
+
   function closeChat() {
     state.activeId = null;
     state.messages = [];
@@ -3449,6 +3619,7 @@
     $('appScreen').classList.remove('is-hidden');
     renderMe();
     await loadConversations();
+    loadStories();
     api('/call/config')
       .then((data) => {
         state.callEnabled = Boolean(data.enabled);
@@ -3528,11 +3699,11 @@
     });
   });
 
-  $('themeBtn').addEventListener('click', toggleTheme);
+  $('themeBtn').addEventListener('click', appearanceModal);
   $('newChatBtn').addEventListener('click', newChatModal);
   $('profileBtn').addEventListener('click', profileModal);
   $('chatInfoBtn').addEventListener('click', chatInfoModal);
-  $('backBtn').addEventListener('click', closeChat);
+  $('backBtn').addEventListener('click', leaveChat);
   $('conversationSearch').addEventListener('input', (event) => {
     state.filter = event.target.value;
     renderConversations();
@@ -3616,11 +3787,241 @@
   document.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape') return;
     if (!$('lightbox').classList.contains('is-hidden')) {
-      $('lightbox').classList.add('is-hidden');
+      closeLightbox();
       return;
     }
-    closeModal();
+    if (!$('modalRoot').classList.contains('is-hidden')) closeModal();
+    else if (onNarrowScreen() && state.activeId) leaveChat();
   });
+
+  /* ------------------------------- استوری ------------------------------- */
+
+  /**
+   * استوری: عکسی که ۲۴ ساعت می‌ماند. نوارش بالای فهرست گفتگوهاست و فقط
+   * استوری کسانی را نشان می‌دهد که گفتگوی مشترک دارید — همان قاعده‌ی بقیه‌ی
+   * برنامه.
+   */
+  const STORY_MS = 5000;
+
+  async function loadStories() {
+    try {
+      const data = await api('/stories');
+      state.stories = data.stories;
+    } catch {
+      state.stories = [];
+    }
+    renderStories();
+  }
+
+  function renderStories() {
+    const strip = $('storyStrip');
+    strip.innerHTML = '';
+
+    const groups = state.stories || [];
+    const mine = groups.find((g) => g.mine);
+
+    // کاشی «استوری من» همیشه هست، حتی اگر استوری‌ای نگذاشته باشم.
+    const own = document.createElement('button');
+    own.type = 'button';
+    own.className = 'story-item story-mine';
+    const ring = document.createElement('span');
+    ring.className = `story-ring${mine && !mine.allSeen ? '' : ' is-seen'}`;
+    if (mine) ring.className = 'story-ring';
+    const avatar = document.createElement('span');
+    avatar.className = 'avatar';
+    paintAvatar(avatar, state.me.displayName, state.me.avatarColor, false, state.me.avatarUrl);
+    ring.appendChild(avatar);
+    if (!mine) {
+      const plus = document.createElement('span');
+      plus.className = 'story-add';
+      plus.textContent = '+';
+      ring.appendChild(plus);
+    }
+    const label = document.createElement('span');
+    label.className = 'story-label';
+    label.textContent = mine ? 'استوری من' : 'افزودن';
+    own.append(ring, label);
+    own.addEventListener('click', () => {
+      if (mine) openStories(groups.indexOf(mine));
+      else $('storyInput').click();
+    });
+    strip.appendChild(own);
+
+    for (const group of groups) {
+      if (group.mine) continue;
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'story-item';
+      const r = document.createElement('span');
+      r.className = `story-ring${group.allSeen ? ' is-seen' : ''}`;
+      const a = document.createElement('span');
+      a.className = 'avatar';
+      paintAvatar(a, group.user.displayName, group.user.avatarColor, false, group.user.avatarUrl);
+      r.appendChild(a);
+      const l = document.createElement('span');
+      l.className = 'story-label';
+      l.textContent = group.user.displayName;
+      item.append(r, l);
+      item.addEventListener('click', () => openStories(groups.indexOf(group)));
+      strip.appendChild(item);
+    }
+
+    strip.classList.remove('is-hidden');
+  }
+
+  /* --- نمای تمام‌صفحه --- */
+
+  const story = { groupIndex: 0, itemIndex: 0, timer: null };
+
+  function openStories(groupIndex) {
+    if (groupIndex < 0) return;
+    story.groupIndex = groupIndex;
+    story.itemIndex = 0;
+    $('storyViewer').classList.remove('is-hidden');
+    pushOverlay('story', hideStories);
+    showStory();
+  }
+
+  function hideStories() {
+    clearTimeout(story.timer);
+    $('storyViewer').classList.add('is-hidden');
+    $('storyImage').removeAttribute('src');
+    // حلقه‌ها باید وضعیت تازه‌ی «دیده شد» را نشان بدهند.
+    loadStories();
+  }
+
+  const closeStories = () => {
+    if (!closeOverlay('story')) hideStories();
+  };
+
+  function showStory() {
+    const group = state.stories[story.groupIndex];
+    if (!group) return closeStories();
+    const item = group.items[story.itemIndex];
+    if (!item) return nextStory();
+
+    paintAvatar(
+      $('storyAvatar'), group.user.displayName, group.user.avatarColor, false, group.user.avatarUrl
+    );
+    $('storyName').textContent = group.user.displayName;
+    $('storyWhen').textContent = relativeTime(item.createdAt);
+    $('storyImage').src = fileUrl(item.url);
+    $('storyCaption').textContent = item.caption || '';
+    $('storyDelete').classList.toggle('is-hidden', !group.mine);
+    $('storyViewers').classList.toggle('is-hidden', !group.mine);
+    if (group.mine) showViewerCount(item.id);
+
+    // نوارهای پیشرفت بالای صفحه
+    const bars = $('storyBars');
+    bars.innerHTML = '';
+    group.items.forEach((_, index) => {
+      const bar = document.createElement('span');
+      bar.className = `story-bar${index < story.itemIndex ? ' is-done' : ''}${
+        index === story.itemIndex ? ' is-live' : ''
+      }`;
+      bar.style.setProperty('--story-ms', `${STORY_MS}ms`);
+      bar.appendChild(document.createElement('i'));
+      bars.appendChild(bar);
+    });
+
+    api(`/stories/${item.id}/seen`, { method: 'POST' }).catch(() => {});
+    clearTimeout(story.timer);
+    story.timer = setTimeout(nextStory, STORY_MS);
+  }
+
+  async function showViewerCount(storyId) {
+    try {
+      const data = await api(`/stories/${storyId}/viewers`);
+      $('storyViewers').textContent = data.users.length
+        ? `👁 ${fa(data.users.length)} بیننده`
+        : '👁 هنوز کسی ندیده';
+      $('storyViewers').onclick = () => {
+        if (data.users.length === 0) return;
+        openModal('بیننده‌های استوری', (body) => {
+          for (const user of data.users) body.appendChild(userRow(user));
+        });
+      };
+    } catch {
+      $('storyViewers').classList.add('is-hidden');
+    }
+  }
+
+  function nextStory() {
+    const group = state.stories[story.groupIndex];
+    if (group && story.itemIndex + 1 < group.items.length) {
+      story.itemIndex += 1;
+      return showStory();
+    }
+    // گروه بعدی، و اگر نبود بسته می‌شود.
+    if (story.groupIndex + 1 < state.stories.length) {
+      story.groupIndex += 1;
+      story.itemIndex = 0;
+      return showStory();
+    }
+    return closeStories();
+  }
+
+  function prevStory() {
+    if (story.itemIndex > 0) {
+      story.itemIndex -= 1;
+      return showStory();
+    }
+    if (story.groupIndex > 0) {
+      story.groupIndex -= 1;
+      story.itemIndex = Math.max(0, state.stories[story.groupIndex].items.length - 1);
+      return showStory();
+    }
+    return showStory();
+  }
+
+  $('storyNext').addEventListener('click', nextStory);
+  $('storyPrev').addEventListener('click', prevStory);
+  $('storyClose').addEventListener('click', closeStories);
+  $('storyDelete').addEventListener('click', async () => {
+    const group = state.stories[story.groupIndex];
+    const item = group?.items[story.itemIndex];
+    if (!item || !confirm('این استوری حذف شود؟')) return;
+    try {
+      const data = await api(`/stories/${item.id}`, { method: 'DELETE' });
+      state.stories = data.stories;
+      closeStories();
+      toast('استوری حذف شد.');
+    } catch (err) {
+      toast(err.message, true);
+    }
+  });
+
+  $('storyInput').addEventListener('change', async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    try {
+      const blob = await prepareStoryImage(file);
+      const form = new FormData();
+      form.append('image', blob, 'story.jpg');
+      const data = await api('/stories', { method: 'POST', body: form, raw: true });
+      state.stories = data.stories;
+      renderStories();
+      toast('استوری شما تا ۲۴ ساعت دیده می‌شود.');
+    } catch (err) {
+      toast(err.message || 'فرستادن استوری ناموفق بود.', true);
+    }
+  });
+
+  /** استوری را کوچک می‌کند؛ لازم نیست تمام‌اندازه باشد. */
+  async function prepareStoryImage(file) {
+    const bitmap = await createImageBitmap(file).catch(() => null);
+    if (!bitmap) throw new Error('این فایل عکس نیست.');
+    const scale = Math.min(1, 1080 / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close?.();
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.85));
+    if (!blob) throw new Error('آماده‌سازی عکس ممکن نشد.');
+    return blob;
+  }
 
   /* --------------------------- نسخه‌ی تازه --------------------------- */
 
