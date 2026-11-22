@@ -6,6 +6,7 @@
   const TOKEN_KEY = 'messenger.token';
   const MAX_IMAGE_EDGE = 1600; // عکس‌ها پیش از آپلود تا این اندازه کوچک می‌شوند
   const AVATAR_EDGE = 512; // عکس پروفایل مربع و در این اندازه ذخیره می‌شود
+  const MAX_FILE_BYTES = 100 * 1024 * 1024; // باید با MAX_FILE_BYTES سرور یکی باشد
   const IMAGE_QUALITY = 0.82;
 
   const state = {
@@ -23,6 +24,7 @@
     recordStartedAt: 0,
     recordTimer: null,
     typingPeers: new Map(),
+    picked: new Set(),
     missedWhileUp: 0,
     stickToBottom: true,
     searchTimer: null,
@@ -244,6 +246,7 @@
     if (message.kind === 'system') return message.body;
     if (message.kind === 'image') return `${prefix}🖼 عکس${message.body ? ` — ${message.body}` : ''}`;
     if (message.kind === 'voice') return `${prefix}🎤 پیام صوتی`;
+    if (message.kind === 'file') return `${prefix}📎 ${message.attachment?.name || 'فایل'}`;
     if (message.kind === 'call') return `${message.body.startsWith('video-') ? '📹' : '📞'} ${callRecordText(message)}`;
     return prefix + message.body;
   }
@@ -265,6 +268,14 @@
         }),
         make(conv.muted ? '🔔 روشن کردن صدا' : '🔕 بی‌صدا کردن', async () => {
           await setConversationFlag(conv, { muted: !conv.muted });
+          closeModal();
+        }),
+        make(conv.archived ? '📤 خارج کردن از بایگانی' : '📥 بایگانی کردن', async () => {
+          await setConversationFlag(conv, { archived: !conv.archived });
+          closeModal();
+        }),
+        make('🔵 علامت‌زدن به‌عنوان خوانده‌نشده', async () => {
+          await setConversationFlag(conv, { unread: true });
           closeModal();
         })
       );
@@ -320,6 +331,7 @@
       for (const [flag, mark, title] of [
         [conv.pinned, '📌', 'سنجاق‌شده'],
         [conv.muted, '🔕', 'بی‌صدا'],
+        [conv.archived, '📥', 'بایگانی‌شده'],
       ]) {
         if (!flag) continue;
         const icon = document.createElement('span');
@@ -531,6 +543,10 @@
       bubble.appendChild(voicePlayer(message));
     }
 
+    if (message.kind === 'file' && message.attachment) {
+      bubble.appendChild(fileCard(message));
+    }
+
     if (message.body || message.deleted) {
       const text = document.createElement('div');
       text.className = `bubble-text${message.deleted ? ' deleted' : ''}`;
@@ -561,6 +577,15 @@
       const actions = document.createElement('div');
       actions.className = 'bubble-actions';
       actions.appendChild(iconButton('😊', 'واکنش', () => openReactionPicker(message)));
+      if (message.body) {
+        actions.appendChild(
+          iconButton('⧉', 'کپی متن', async () => {
+            const ok = await copyText(message.body);
+            toast(ok ? 'متن کپی شد.' : 'کپی ممکن نشد.', !ok);
+          })
+        );
+      }
+      actions.appendChild(iconButton('☑', 'انتخاب', () => togglePick(message.id, true)));
       actions.appendChild(iconButton('↪', 'بازفرستادن', () => forwardModal(message)));
       actions.appendChild(iconButton('↩', 'پاسخ', () => startReply(message)));
       if (mine && message.kind !== 'voice') {
@@ -578,6 +603,14 @@
     }
 
     if (message.pending) bubble.style.opacity = '.6';
+    if (state.picked.has(message.id)) row.classList.add('is-picked');
+    // در حالت انتخاب، کلیک روی هر جای پیام یعنی انتخاب/لغو انتخاب.
+    if (state.picked.size > 0) {
+      row.addEventListener('click', (event) => {
+        if (event.target.closest('a, button, audio, video')) return;
+        togglePick(message.id);
+      });
+    }
     row.appendChild(bubble);
     return row;
   }
@@ -664,6 +697,46 @@
     });
 
     wrap.append(play, track, time, audio);
+    return wrap;
+  }
+
+  const PLAYABLE = /\.(mp4|webm|mp3|m4a|ogg|wav)$/i;
+
+  /** حباب پیوست فایل: ویدیو و صوت پخش می‌شوند، بقیه دکمه‌ی دانلود دارند. */
+  function fileCard(message) {
+    const { name, size, url } = message.attachment;
+    const wrap = document.createElement('div');
+
+    if (PLAYABLE.test(name || '')) {
+      const media = document.createElement(/\.(mp4|webm)$/i.test(name) ? 'video' : 'audio');
+      media.src = fileUrl(url);
+      media.controls = true;
+      media.preload = 'metadata';
+      media.className = 'bubble-media';
+      wrap.appendChild(media);
+    }
+
+    const card = document.createElement('a');
+    card.className = 'file-card';
+    card.href = `${fileUrl(url)}&download=1`;
+    card.setAttribute('download', name || 'file');
+
+    const icon = document.createElement('span');
+    icon.className = 'file-icon';
+    icon.textContent = (/\.([a-z0-9]{1,5})$/i.exec(name || '')?.[1] || '?').slice(0, 4);
+
+    const main = document.createElement('span');
+    main.className = 'file-main';
+    main.append(
+      Object.assign(document.createElement('span'), { className: 'file-name', textContent: name }),
+      Object.assign(document.createElement('span'), {
+        className: 'file-size',
+        textContent: fileSize(size),
+      })
+    );
+
+    card.append(icon, main);
+    wrap.appendChild(card);
     return wrap;
   }
 
@@ -872,6 +945,51 @@
     );
   }
 
+  /* ------------------------ انتخاب چند پیام ------------------------ */
+
+  function togglePick(id, force = false) {
+    if (state.picked.has(id) && !force) state.picked.delete(id);
+    else state.picked.add(id);
+    renderSelectBar();
+    renderMessages({ keepScroll: true });
+  }
+
+  function clearPicks() {
+    if (state.picked.size === 0) return;
+    state.picked.clear();
+    renderSelectBar();
+    renderMessages({ keepScroll: true });
+  }
+
+  function renderSelectBar() {
+    const bar = $('selectBar');
+    bar.classList.toggle('is-hidden', state.picked.size === 0);
+    $('selectCount').textContent = `${fa(state.picked.size)} پیام انتخاب شده`;
+  }
+
+  /** حذف دسته‌ای. پیام‌هایی که مال ما نیستند از قبل حذف نمی‌شوند. */
+  async function removePicked() {
+    const mine = state.messages.filter(
+      (m) => state.picked.has(m.id) && m.senderId === state.me.id && !m.deleted
+    );
+    if (mine.length === 0) {
+      clearPicks();
+      return toast('فقط پیام‌های خودتان قابل حذف‌اند.', true);
+    }
+    if (!confirm(`${fa(mine.length)} پیام حذف شود؟`)) return;
+
+    let failed = 0;
+    for (const message of mine) {
+      try {
+        await api(`/messages/${message.id}`, { method: 'DELETE' });
+      } catch {
+        failed += 1;
+      }
+    }
+    clearPicks();
+    toast(failed ? `${fa(failed)} پیام حذف نشد.` : `${fa(mine.length)} پیام حذف شد.`, Boolean(failed));
+  }
+
   /** دکمه‌ی «رفتن به آخرین پیام»، فقط وقتی کاربر بالا رفته باشد. */
   function updateJumpButton() {
     const button = $('jumpToLatest');
@@ -927,6 +1045,8 @@
   async function openConversation(id) {
     // نوشته‌ی نیمه‌کاره‌ی گفتگوی قبلی نباید بپرد.
     saveDraft();
+    state.picked.clear();
+    renderSelectBar();
     state.activeId = id;
     state.stickToBottom = true;
     state.messages = [];
@@ -1245,11 +1365,33 @@
   $('attachBtn').addEventListener('click', () => $('imageInput').click());
 
   $('imageInput').addEventListener('change', async (event) => {
-    const file = event.target.files?.[0];
+    const chosen = [...(event.target.files || [])];
     event.target.value = '';
-    if (!file) return;
-    if (!file.type.startsWith('image/')) return toast('فقط فایل عکس قابل ارسال است.', true);
+    if (chosen.length === 0) return;
 
+    const images = chosen.filter((f) => f.type.startsWith('image/'));
+    if (images.length === 0) return toast('فقط فایل عکس قابل ارسال است.', true);
+
+    // چند عکس با هم: اولی در پیش‌نمایش می‌نشیند تا بشود برایش توضیح نوشت،
+    // بقیه پشت سر هم و بی‌توضیح می‌روند.
+    if (images.length > 1) {
+      toast(`در حال ارسال ${fa(images.length)} عکس…`);
+      for (const one of images.slice(1)) {
+        try {
+          const prepared = await prepareImage(one);
+          const form = new FormData();
+          form.append('image', prepared.blob, prepared.name);
+          await api(`/conversations/${state.activeId}/images`, {
+            method: 'POST', body: form, raw: true,
+          });
+        } catch (err) {
+          toast(err.message, true);
+          break;
+        }
+      }
+    }
+
+    const file = images[0];
     try {
       const prepared = await prepareImage(file);
       state.pendingImage = prepared;
@@ -1265,6 +1407,33 @@
   });
 
   $('cancelImage').addEventListener('click', clearImagePreview);
+
+  $('fileBtn').addEventListener('click', () => $('fileInput').click());
+
+  $('fileInput').addEventListener('change', async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || !state.activeId) return;
+    if (file.size > MAX_FILE_BYTES) {
+      return toast(`حجم فایل بیشتر از ${fileSize(MAX_FILE_BYTES)} است.`, true);
+    }
+
+    const form = new FormData();
+    form.append('file', file, file.name);
+    if (state.replyTo) form.append('replyToId', String(state.replyTo.id));
+
+    toast(`در حال فرستادن ${file.name}…`);
+    $('fileBtn').disabled = true;
+    try {
+      await api(`/conversations/${state.activeId}/files`, { method: 'POST', body: form, raw: true });
+      state.replyTo = null;
+      updateReplyBar();
+    } catch (err) {
+      toast(err.message, true);
+    } finally {
+      $('fileBtn').disabled = false;
+    }
+  });
 
   /**
    * عکس پروفایل را مربع و کوچک می‌کند. برش از وسط انجام می‌شود تا صورت‌ها
@@ -1647,13 +1816,12 @@
     if (document.visibilityState === 'visible') return;
     if (conv.muted) return; // کاربر خودش خواسته این گفتگو ساکت باشد
     const body =
-      message.kind === 'image'
-        ? '🖼 عکس فرستاد'
-        : message.kind === 'voice'
-          ? '🎤 پیام صوتی فرستاد'
-          : message.kind === 'call'
-            ? callRecordText(message)
-            : message.body.slice(0, 120);
+      {
+        image: () => '🖼 عکس فرستاد',
+        file: () => `📎 ${message.attachment?.name || 'فایل'} فرستاد`,
+        voice: () => '🎤 پیام صوتی فرستاد',
+        call: () => callRecordText(message),
+      }[message.kind]?.() ?? message.body.slice(0, 120);
 
     if (window.AndroidBridge?.notify) {
       try {
@@ -2932,7 +3100,9 @@
       const data = await api(`/conversations/${conv.id}/flags`, { method: 'POST', body: patch });
       upsertConversation(data.conversation);
       if ('pinned' in patch) toast(patch.pinned ? 'سنجاق شد.' : 'سنجاق برداشته شد.');
-      else toast(patch.muted ? 'بی‌صدا شد.' : 'صدا روشن شد.');
+      else if ('muted' in patch) toast(patch.muted ? 'بی‌صدا شد.' : 'صدا روشن شد.');
+      else if ('archived' in patch) toast(patch.archived ? 'بایگانی شد.' : 'از بایگانی خارج شد.');
+      else toast('خوانده‌نشده شد.');
     } catch (err) {
       toast(err.message, true);
     }
@@ -3010,16 +3180,42 @@
 
       if (conv.type === 'group') {
         // دکمه‌ها فقط برای سازنده‌ی گروه معنی دارند؛ سرور هم همین را الزام می‌کند.
-        const iAmOwner = conv.members.find((m) => m.id === state.me.id)?.role === 'owner';
+        const myRole = conv.members.find((m) => m.id === state.me.id)?.role;
+        const iAmOwner = myRole === 'owner';
+        const iAmStaff = iAmOwner || myRole === 'admin';
 
-        if (iAmOwner) {
+        if (iAmStaff) {
           body.append(groupEditor(conv), sectionTitle('اعضا'));
         }
 
         for (const member of conv.members) {
           const row = userRow(member);
           if (member.role === 'owner') row.querySelector('small').append(' — سازنده');
+          else if (member.role === 'admin') row.querySelector('small').append(' — مدیر گروه');
           if (iAmOwner && member.id !== state.me.id) {
+            const roleBtn = document.createElement('button');
+            roleBtn.type = 'button';
+            roleBtn.className = 'btn';
+            roleBtn.textContent = member.role === 'admin' ? 'برداشتن مدیریت' : 'مدیر گروه';
+            roleBtn.addEventListener('click', async (event) => {
+              event.stopPropagation();
+              roleBtn.disabled = true;
+              try {
+                const data = await api(`/conversations/${conv.id}/members/${member.id}/role`, {
+                  method: 'POST',
+                  body: { role: member.role === 'admin' ? 'member' : 'admin' },
+                });
+                upsertConversation(data.conversation);
+                closeModal();
+                toast('نقش عضو به‌روز شد.');
+              } catch (err) {
+                toast(err.message, true);
+                roleBtn.disabled = false;
+              }
+            });
+            row.appendChild(roleBtn);
+          }
+          if (iAmStaff && member.id !== state.me.id && member.role !== 'owner') {
             const kick = document.createElement('button');
             kick.type = 'button';
             kick.className = 'row-remove';
@@ -3047,7 +3243,7 @@
           body.appendChild(row);
         }
 
-        if (iAmOwner) {
+        if (iAmStaff) {
           const add = document.createElement('button');
           add.className = 'btn';
           add.textContent = '➕ افزودن عضو';
@@ -3183,6 +3379,51 @@
       button.setAttribute('aria-label', shown ? 'نمایش رمز' : 'پنهان کردن رمز');
     });
   }
+
+  $('cancelSelect').addEventListener('click', clearPicks);
+  $('deleteSelected').addEventListener('click', removePicked);
+  $('copySelected').addEventListener('click', async () => {
+    const text = state.messages
+      .filter((m) => state.picked.has(m.id) && m.body)
+      .map((m) => `${senderName(m.senderId)}: ${m.body}`)
+      .join('\n');
+    if (!text) return toast('متنی برای کپی نیست.', true);
+    const ok = await copyText(text);
+    toast(ok ? 'متن‌ها کپی شدند.' : 'کپی ممکن نشد.', !ok);
+    if (ok) clearPicks();
+  });
+
+  /* ----------------------------- ایموجی ----------------------------- */
+
+  const EMOJIS = (
+    '😀😁😂🤣😊😇🙂😉😍🥰😘😋😎🤓🧐🤔🤨😐😑😶🙄😏😣😥😮🤐😯😪😫🥱😴' +
+    '😌😛😜😝🤤😒😓😔😕🙃🤑😲🙁😖😞😟😤😢😭😦😧😨😩🤯😬😰😱🥵🥶😳' +
+    '👍👎👌✌️🤞🤝🙏👏🙌💪🔥✨⭐️❤️🧡💛💚💙💜🖤🤍💔💯✅❌⚠️🎉🎂🎁'
+  ).match(/\p{Extended_Pictographic}(\uFE0F)?/gu) || [];
+
+  $('emojiBtn').addEventListener('click', () => {
+    openModal('ایموجی', (body) => {
+      const grid = document.createElement('div');
+      grid.className = 'emoji-grid';
+      for (const emoji of EMOJIS) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = emoji;
+        button.addEventListener('click', () => {
+          const input = $('messageInput');
+          const at = input.selectionStart ?? input.value.length;
+          input.value = input.value.slice(0, at) + emoji + input.value.slice(at);
+          input.selectionStart = input.selectionEnd = at + emoji.length;
+          autoGrow();
+          saveDraft();
+          closeModal();
+          input.focus();
+        });
+        grid.appendChild(button);
+      }
+      body.appendChild(grid);
+    });
+  });
 
   $('themeBtn').addEventListener('click', toggleTheme);
   $('newChatBtn').addEventListener('click', newChatModal);

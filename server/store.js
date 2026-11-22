@@ -29,7 +29,7 @@ const publicUser = (row) =>
   };
 
 const attachmentOf = (row) =>
-  (row.kind === 'image' || row.kind === 'voice') && !row.deleted_at
+  ['image', 'voice', 'file'].includes(row.kind) && !row.deleted_at
     ? {
         url: `/api/files/${row.id}`,
         name: row.file_name,
@@ -282,7 +282,7 @@ const membersOf = (conversationId) =>
 const memberView = (conversationId, userId) =>
   db
     .prepare(
-      `SELECT last_read_message_id, cleared_up_to_id, hidden, pinned_at, muted
+      `SELECT last_read_message_id, cleared_up_to_id, hidden, pinned_at, muted, archived
        FROM members WHERE conversation_id = ? AND user_id = ?`
     )
     .get(conversationId, userId) || {
@@ -291,10 +291,11 @@ const memberView = (conversationId, userId) =>
     hidden: 0,
     pinned_at: null,
     muted: 0,
+    archived: 0,
   };
 
 /** سنجاق و بی‌صدا هر کدام فقط برای همان کاربر است، نه برای طرف مقابل. */
-function setConversationFlags(conversationId, userId, { pinned, muted }) {
+function setConversationFlags(conversationId, userId, { pinned, muted, archived, unread }) {
   if (pinned !== undefined) {
     db.prepare('UPDATE members SET pinned_at = ? WHERE conversation_id = ? AND user_id = ?')
       .run(pinned ? Date.now() : null, conversationId, userId);
@@ -302,6 +303,22 @@ function setConversationFlags(conversationId, userId, { pinned, muted }) {
   if (muted !== undefined) {
     db.prepare('UPDATE members SET muted = ? WHERE conversation_id = ? AND user_id = ?')
       .run(muted ? 1 : 0, conversationId, userId);
+  }
+  if (archived !== undefined) {
+    db.prepare('UPDATE members SET archived = ? WHERE conversation_id = ? AND user_id = ?')
+      .run(archived ? 1 : 0, conversationId, userId);
+  }
+  // «خوانده‌نشده کردن»: نشانگر خواندن را یک پیام عقب می‌بریم تا شمارنده
+  // دوباره روشن شود. پیام‌ها دست نمی‌خورند.
+  if (unread === true) {
+    const last = db
+      .prepare('SELECT MAX(id) AS id FROM messages WHERE conversation_id = ? AND sender_id IS NOT ?')
+      .get(conversationId, userId)?.id;
+    if (last) {
+      db.prepare(
+        'UPDATE members SET last_read_message_id = ? WHERE conversation_id = ? AND user_id = ?'
+      ).run(last - 1, conversationId, userId);
+    }
   }
   return conversationView(conversationId, userId);
 }
@@ -326,6 +343,11 @@ function addMember(conversationId, userId) {
   db.prepare(
     'INSERT OR IGNORE INTO members (conversation_id, user_id, role, joined_at) VALUES (?, ?, ?, ?)'
   ).run(conversationId, userId, 'member', Date.now());
+}
+
+function setMemberRole(conversationId, userId, role) {
+  db.prepare('UPDATE members SET role = ? WHERE conversation_id = ? AND user_id = ?')
+    .run(role, conversationId, userId);
 }
 
 function removeMember(conversationId, userId) {
@@ -380,6 +402,7 @@ function conversationView(conversationId, viewerId) {
     clearedUpToId: cleared,
     pinned: Boolean(view.pinned_at),
     muted: Boolean(view.muted),
+    archived: Boolean(view.archived),
   };
 }
 
@@ -391,7 +414,7 @@ function listConversations(viewerId) {
        LEFT JOIN (SELECT conversation_id, MAX(id) AS last_id FROM messages GROUP BY conversation_id) lm
          ON lm.conversation_id = c.id
        WHERE m.hidden = 0 OR COALESCE(lm.last_id, 0) > m.cleared_up_to_id
-       ORDER BY (m.pinned_at IS NULL), m.pinned_at DESC,
+       ORDER BY m.archived, (m.pinned_at IS NULL), m.pinned_at DESC,
                 COALESCE(lm.last_id, 0) DESC, c.id DESC`
     )
     .all(viewerId)
@@ -665,6 +688,7 @@ function stats() {
 
 module.exports = {
   db,
+  UPLOAD_DIR,
   publicUser,
   publicMessage,
   createUser,
@@ -691,6 +715,7 @@ module.exports = {
   addMember,
   memberView,
   clearConversationFor,
+  setMemberRole,
   removeMember,
   conversationView,
   listConversations,

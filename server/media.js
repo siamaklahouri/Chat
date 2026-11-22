@@ -116,4 +116,72 @@ function sniffAudio(buf) {
   return null;
 }
 
-module.exports = { sniff, sniffAudio };
+/**
+ * نوعِ امن برای سرو کردن فایل پیوست.
+ *
+ * به نوعی که مرورگر فرستنده اعلام کرده اعتماد نمی‌کنیم. فقط چند نوعِ بی‌خطر
+ * با نام خودشان سرو می‌شوند؛ هر چیز دیگری octet-stream است تا مرورگر
+ * بازش نکند. این مهم‌ترین خط دفاع است: اگر یک فایل HTML یا SVG با نوع
+ * خودش سرو شود، روی دامنه‌ی ما اسکریپت اجرا می‌کند.
+ */
+const SAFE_TYPES = new Map([
+  ['pdf', 'application/pdf'],
+  ['txt', 'text/plain; charset=utf-8'],
+  ['mp4', 'video/mp4'],
+  ['webm', 'video/webm'],
+  ['mp3', 'audio/mpeg'],
+  ['m4a', 'audio/mp4'],
+  ['ogg', 'audio/ogg'],
+  ['wav', 'audio/wav'],
+  ['zip', 'application/zip'],
+]);
+
+const extensionOf = (name) => {
+  const match = /\.([a-zA-Z0-9]{1,8})$/.exec(String(name || ''));
+  return match ? match[1].toLowerCase() : '';
+};
+
+const safeTypeFor = (name) => SAFE_TYPES.get(extensionOf(name)) || 'application/octet-stream';
+
+/**
+ * نام فایلی که از multipart می‌آید را به UTF-8 برمی‌گرداند.
+ *
+ * busboy (که multer رویش سوار است) نام فایل را latin1 می‌خواند، پس
+ * «گزارش.pdf» به‌صورت بایت‌های درهم می‌رسد. برای نام‌های ASCII این تبدیل
+ * بی‌اثر است، و اگر نتیجه‌اش معتبر نبود نام اصلی را نگه می‌داریم.
+ */
+function decodeUploadName(name) {
+  const raw = String(name || '');
+  try {
+    const decoded = Buffer.from(raw, 'latin1').toString('utf8');
+    return decoded.includes('\uFFFD') ? raw : decoded;
+  } catch {
+    return raw;
+  }
+}
+
+/**
+ * نام فایل را برای ذخیره و نمایش تمیز می‌کند: بدون مسیر، بدون نویسه‌های
+ * کنترلی، و با طول محدود.
+ */
+function safeFileName(name) {
+  const base = String(name || '')
+    .split(/[\\/]/)
+    .pop()
+    .replace(/[\u0000-\u001f\u007f]/g, '')
+    .trim();
+  return base.slice(0, 120) || 'file';
+}
+
+/** آیا این فایل می‌تواند درون‌خطی (بدون دانلود اجباری) پخش شود؟ */
+const isPlayable = (name) => /^(video|audio)\//.test(safeTypeFor(name));
+
+module.exports = {
+  sniff,
+  sniffAudio,
+  safeTypeFor,
+  safeFileName,
+  decodeUploadName,
+  isPlayable,
+  extensionOf,
+};

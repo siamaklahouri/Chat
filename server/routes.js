@@ -1,6 +1,8 @@
 'use strict';
 
+const crypto = require('node:crypto');
 const fs = require('node:fs');
+const path = require('node:path');
 const express = require('express');
 const multer = require('multer');
 const {
@@ -20,7 +22,14 @@ const {
   SESSION_TTL_MS,
 } = require('./auth');
 const store = require('./store');
-const { sniff, sniffAudio } = require('./media');
+const {
+  sniff,
+  sniffAudio,
+  safeTypeFor,
+  safeFileName,
+  decodeUploadName,
+  isPlayable,
+} = require('./media');
 const { hub } = require('./realtime');
 const { createLimiter, rateLimit, ipOf } = require('./ratelimit');
 const { iceServers, callsEnabled } = require('./calls');
@@ -30,6 +39,11 @@ const router = express.Router();
 const MAX_TEXT = 4000;
 const MAX_IMAGE_BYTES = Number(process.env.MAX_IMAGE_BYTES || 8 * 1024 * 1024);
 const MAX_VOICE_BYTES = Number(process.env.MAX_VOICE_BYTES || 6 * 1024 * 1024);
+// ۱۰۰ مگابایت. آپلود قابل ازسرگیری نیست، پس فایل خیلی بزرگ روی اینترنت
+// موبایل عملاً هیچ‌وقت کامل نمی‌شود. با MAX_FILE_BYTES قابل تغییر است.
+const MAX_FILE_BYTES = Number(process.env.MAX_FILE_BYTES || 100 * 1024 * 1024);
+// وقتی فضای آزاد از این کمتر شد، آپلود رد می‌شود — سرور فقط مال ما نیست.
+const MIN_FREE_BYTES = Number(process.env.MIN_FREE_BYTES || 2 * 1024 * 1024 * 1024);
 const MAX_VOICE_MS = 5 * 60 * 1000;
 const USERNAME_RE = /^[a-zA-Z0-9_]{3,24}$/;
 const MIN_PASSWORD = 8;
@@ -43,6 +57,34 @@ const uploadVoice = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_VOICE_BYTES, files: 1 },
 });
+
+/**
+ * پیوست فایل مستقیم روی دیسک نوشته می‌شود، نه در حافظه.
+ *
+ * با memoryStorage یک فایل ۱۰۰ مگابایتی یعنی ۱۰۰ مگابایت RAM، و چند آپلود
+ * هم‌زمان سرویس را روی یک ماشین ۲ گیگابایتی می‌کُشد.
+ */
+const TMP_UPLOAD_DIR = path.join(store.UPLOAD_DIR, 'incoming');
+fs.mkdirSync(TMP_UPLOAD_DIR, { recursive: true });
+
+const uploadFile = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, done) => done(null, TMP_UPLOAD_DIR),
+    filename: (req, file, done) =>
+      done(null, `up-${Date.now()}-${crypto.randomBytes(8).toString('hex')}`),
+  }),
+  limits: { fileSize: MAX_FILE_BYTES, files: 1 },
+});
+
+/** فضای آزاد دیسک، یا null اگر نشد خواند. */
+function freeBytes() {
+  try {
+    const stat = fs.statfsSync(store.UPLOAD_DIR);
+    return stat.bavail * stat.bsize;
+  } catch {
+    return null;
+  }
+}
 
 const fail = (res, status, error, code) => res.status(status).json({ error, code });
 
@@ -359,6 +401,8 @@ router.post('/conversations/:id/flags', requireApproved, memberGuard, (req, res)
   const patch = {};
   if ('pinned' in req.body) patch.pinned = Boolean(req.body.pinned);
   if ('muted' in req.body) patch.muted = Boolean(req.body.muted);
+  if ('archived' in req.body) patch.archived = Boolean(req.body.archived);
+  if (req.body.unread === true) patch.unread = true;
   if (Object.keys(patch).length === 0) return fail(res, 400, 'چیزی برای تغییر داده نشد.');
 
   const view = store.setConversationFlags(req.conversationId, req.user.id, patch);
@@ -637,7 +681,7 @@ router.post(
       body: caption,
       replyToId: reply.id,
       file: {
-        name: clean(req.file.originalname).slice(0, 120) || `image.${info.ext}`,
+        name: safeFileName(decodeUploadName(req.file.originalname)) || `image.${info.ext}`,
         mime: info.mime,
         size: req.file.size,
         width: info.width,
@@ -656,6 +700,60 @@ router.post(
     store.markRead(req.conversationId, req.user.id, message.id);
     hub.sendToConversation(req.conversationId, { type: 'message:new', message });
     res.status(201).json({ message, clientId: req.body.clientId ?? null });
+  }
+);
+
+/* -------------------------------- فایل -------------------------------- */
+
+router.post(
+  '/conversations/:id/files',
+  requireApproved,
+  rateLimit({ windowMs: 10 * 60_000, max: 20, scope: 'file', by: 'user', message: 'تعداد آپلود فایل زیاد است.' }),
+  memberGuard,
+  blockGuard,
+  uploadFile.single('file'),
+  (req, res) => {
+    const discard = () => {
+      if (req.file) fs.rmSync(req.file.path, { force: true });
+    };
+    if (!req.file) return fail(res, 400, 'فایلی دریافت نشد.');
+
+    // سرور را فقط ما استفاده نمی‌کنیم؛ پر کردن دیسک یعنی از کار افتادن
+    // سایت‌های دیگر همین ماشین.
+    const free = freeBytes();
+    if (free !== null && free < MIN_FREE_BYTES) {
+      discard();
+      return fail(res, 507, 'فضای دیسک سرور کم است؛ با مدیر تماس بگیرید.');
+    }
+
+    const name = safeFileName(decodeUploadName(req.file.originalname));
+    const message = store.createMessage({
+      conversationId: req.conversationId,
+      senderId: req.user.id,
+      kind: 'file',
+      body: clean(req.body.caption).slice(0, MAX_TEXT),
+      file: {
+        name,
+        // نوع اعلام‌شده‌ی مرورگر ذخیره نمی‌شود؛ موقع سرو کردن از روی پسوند و
+        // یک فهرست کوتاهِ امن تصمیم می‌گیریم.
+        mime: safeTypeFor(name),
+        size: req.file.size,
+      },
+    });
+
+    try {
+      // rename روی همان فایل‌سیستم اتمیک است و فایل را دوباره کپی نمی‌کند.
+      fs.renameSync(req.file.path, store.filePathFor(message.id));
+    } catch (err) {
+      store.deleteMessage(message.id);
+      discard();
+      console.error('[file] ذخیره ناموفق بود:', err);
+      return fail(res, 500, 'ذخیره فایل ناموفق بود.');
+    }
+
+    store.markRead(req.conversationId, req.user.id, message.id);
+    hub.sendToConversation(req.conversationId, { type: 'message:new', message });
+    return res.status(201).json({ message, clientId: req.body.clientId ?? null });
   }
 );
 
@@ -729,24 +827,33 @@ router.post(
 
 router.get('/files/:id', fileAuth, (req, res) => {
   const row = store.rawMessage(Number(req.params.id));
-  const isFile = row && (row.kind === 'image' || row.kind === 'voice');
+  const isFile = row && ['image', 'voice', 'file'].includes(row.kind);
   if (!isFile || row.deleted_at) return fail(res, 404, 'فایل پیدا نشد.');
   if (!store.isMember(row.conversation_id, req.user.id)) return fail(res, 403, 'دسترسی ندارید.');
 
   const filePath = store.filePathFor(row.id);
   if (!fs.existsSync(filePath)) return fail(res, 404, 'فایل پاک شده است.');
 
-  res.type(row.file_mime || 'application/octet-stream');
+  // برای پیوست، نوع را از روی پسوند و فهرست کوتاه امن می‌گیریم. هر چیزی که
+  // در آن فهرست نباشد octet-stream است، پس مرورگر بازش نمی‌کند — وگرنه یک
+  // فایل HTML یا SVG روی دامنه‌ی خودمان اسکریپت اجرا می‌کرد.
+  const type =
+    row.kind === 'file' ? safeTypeFor(row.file_name) : row.file_mime || 'application/octet-stream';
+  res.type(type);
   res.setHeader('Cache-Control', 'private, max-age=86400');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
-  if (req.query.download) {
+
+  // هر چیزی که عکس یا رسانه‌ی پخش‌شدنی نیست، دانلود می‌شود نه باز.
+  const inline =
+    row.kind === 'image' || row.kind === 'voice' || (row.kind === 'file' && isPlayable(row.file_name));
+  if (req.query.download || !inline) {
     res.setHeader(
       'Content-Disposition',
-      `attachment; filename*=UTF-8''${encodeURIComponent(row.file_name || 'image')}`
+      `attachment; filename*=UTF-8''${encodeURIComponent(row.file_name || 'file')}`
     );
   }
-  fs.createReadStream(filePath).pipe(res);
+  return fs.createReadStream(filePath).pipe(res);
 });
 
 /* ------------------------- message edit / delete ------------------------ */
@@ -834,20 +941,59 @@ router.post('/conversations/:id/members', requireApproved, memberGuard, (req, re
   });
 });
 
-/** فقط سازنده‌ی گروه. در غیر این صورت پاسخ ۴۰۳ می‌دهد و undefined برمی‌گرداند. */
-function groupOwnerGuard(req, res) {
+/**
+ * سازنده یا مدیر گروه. سازنده یکی است و نمی‌شود عوضش کرد؛ مدیر را سازنده
+ * تعیین می‌کند و می‌تواند عضو اضافه و حذف کند و نام و عکس را عوض کند — ولی
+ * نمی‌تواند مدیر بسازد یا سازنده را بیرون کند.
+ */
+function groupStaffGuard(req, res, { ownerOnly = false } = {}) {
   const conv = store.getConversationRow(req.conversationId);
   if (!conv || conv.type !== 'group') {
     fail(res, 400, 'این گفتگو گروه نیست.');
     return null;
   }
   const me = store.membersOf(conv.id).find((m) => m.id === req.user.id);
-  if (me?.role !== 'owner') {
-    fail(res, 403, 'فقط سازنده‌ی گروه می‌تواند این کار را بکند.');
+  const allowed = ownerOnly ? me?.role === 'owner' : ['owner', 'admin'].includes(me?.role);
+  if (!allowed) {
+    fail(res, 403, ownerOnly
+      ? 'فقط سازنده‌ی گروه می‌تواند این کار را بکند.'
+      : 'فقط سازنده یا مدیر گروه می‌تواند این کار را بکند.');
     return null;
   }
   return conv;
 }
+
+const groupOwnerGuard = (req, res) => groupStaffGuard(req, res);
+
+/** تعیین یا برداشتن مدیر گروه — فقط به‌دست سازنده. */
+router.post('/conversations/:id/members/:userId/role', requireApproved, memberGuard, (req, res) => {
+  const conv = groupStaffGuard(req, res, { ownerOnly: true });
+  if (!conv) return undefined;
+
+  const targetId = Number(req.params.userId);
+  const role = clean(req.body.role);
+  if (!['member', 'admin'].includes(role)) return fail(res, 400, 'نقش نامعتبر است.');
+  if (!Number.isInteger(targetId) || !store.isMember(conv.id, targetId)) {
+    return fail(res, 404, 'این کاربر عضو گروه نیست.');
+  }
+  if (targetId === req.user.id) return fail(res, 400, 'نقش خودتان را نمی‌توانید عوض کنید.');
+
+  store.setMemberRole(conv.id, targetId, role);
+  const target = store.getUserById(targetId);
+  const system = store.createMessage({
+    conversationId: conv.id,
+    senderId: req.user.id,
+    kind: 'system',
+    body: role === 'admin'
+      ? `${target?.display_name || 'کاربر'} مدیر گروه شد.`
+      : `${target?.display_name || 'کاربر'} دیگر مدیر گروه نیست.`,
+  });
+  hub.sendToConversation(conv.id, { type: 'message:new', message: system });
+  announceConversation(conv.id);
+  return res.json({
+    conversation: decorateConversation(store.conversationView(conv.id, req.user.id)),
+  });
+});
 
 /** تغییر نام گروه. */
 router.patch('/conversations/:id', requireApproved, memberGuard, (req, res) => {
@@ -934,8 +1080,11 @@ router.delete('/conversations/:id/members/:userId', requireApproved, memberGuard
 
   const targetId = Number(req.params.userId);
   if (!Number.isInteger(targetId)) return fail(res, 400, 'شناسه نامعتبر است.');
-  if (targetId === req.user.id) return fail(res, 400, 'سازنده نمی‌تواند خودش را حذف کند؛ از «خروج از گروه» استفاده کنید.');
+  if (targetId === req.user.id) return fail(res, 400, 'خودتان را نمی‌توانید حذف کنید؛ از «خروج از گروه» استفاده کنید.');
   if (!store.isMember(conv.id, targetId)) return fail(res, 404, 'این کاربر عضو گروه نیست.');
+  // مدیر گروه نباید بتواند سازنده را بیرون کند.
+  const targetRole = store.membersOf(conv.id).find((m) => m.id === targetId)?.role;
+  if (targetRole === 'owner') return fail(res, 403, 'سازنده‌ی گروه را نمی‌توان حذف کرد.');
 
   const target = store.getUserById(targetId);
   store.removeMember(conv.id, targetId);
@@ -969,4 +1118,4 @@ router.delete('/conversations/:id/members/me', requireApproved, memberGuard, (re
   res.json({ ok: true });
 });
 
-module.exports = { router, MAX_IMAGE_BYTES, MAX_VOICE_BYTES };
+module.exports = { router, MAX_IMAGE_BYTES, MAX_VOICE_BYTES, MAX_FILE_BYTES };

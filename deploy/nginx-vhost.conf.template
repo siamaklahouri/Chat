@@ -6,7 +6,10 @@ server {
     server_name __DOMAIN__ www.__DOMAIN__;
 
     # کمی بیشتر از بیشینه‌ی حجم عکس (۸ مگابایت)
-    client_max_body_size 12m;
+    # باید از MAX_FILE_BYTES برنامه بزرگ‌تر باشد (پیش‌فرض ۱۰۰ مگابایت)،
+    # وگرنه nginx آپلود را پیش از رسیدن به برنامه با خطای ۴۱۳ رد می‌کند.
+    client_max_body_size 110m;
+    client_body_timeout 300s;
 
     access_log /var/log/nginx/__DOMAIN__.access.log;
     error_log  /var/log/nginx/__DOMAIN__.error.log;

@@ -1,6 +1,7 @@
 'use strict';
 
 const fs = require('node:fs');
+const path = require('node:path');
 const { db, getMeta, setMeta, UPLOAD_DIR } = require('./db');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -18,6 +19,37 @@ const isAuto = () => INTERVAL_DAYS > 0;
  * Wipes every message and uploaded image. Accounts, groups, memberships and
  * admin approvals are kept on purpose — only the conversation content goes.
  */
+/**
+ * آپلودهای نیمه‌کاره را برمی‌دارد.
+ *
+ * اگر کاربر وسط فرستادن یک فایل بزرگ قطع شود، فایل موقتش روی دیسک می‌ماند و
+ * هیچ‌وقت به پیامی وصل نمی‌شود. بدون این، دیسک آرام‌آرام پر می‌شد.
+ */
+function sweepIncoming(olderThanMs = 60 * 60_000) {
+  const dir = path.join(UPLOAD_DIR, 'incoming');
+  let removed = 0;
+  let entries;
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return 0;
+  }
+  const cutoff = Date.now() - olderThanMs;
+  for (const entry of entries) {
+    if (!entry.isFile()) continue;
+    const full = path.join(dir, entry.name);
+    try {
+      if (fs.statSync(full).mtimeMs <= cutoff) {
+        fs.rmSync(full, { force: true });
+        removed += 1;
+      }
+    } catch {
+      /* همین حالا رفته */
+    }
+  }
+  return removed;
+}
+
 function wipeMessages(reason = 'scheduled') {
   const before = db.prepare('SELECT COUNT(*) AS c FROM messages').get().c;
   const images = db.prepare("SELECT COUNT(*) AS c FROM messages WHERE kind = 'image'").get().c;
@@ -32,6 +64,7 @@ function wipeMessages(reason = 'scheduled') {
       removedFiles += 1;
     }
   }
+  removedFiles += sweepIncoming(0);
 
   const now = Date.now();
   setMeta('last_wipe_at', now);
@@ -79,4 +112,4 @@ function startScheduler() {
   return timer;
 }
 
-module.exports = { wipeMessages, wipeStatus, runIfDue, startScheduler, INTERVAL_DAYS };
+module.exports = { wipeMessages, sweepIncoming, wipeStatus, runIfDue, startScheduler, INTERVAL_DAYS };

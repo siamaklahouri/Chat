@@ -162,6 +162,14 @@
         </button>
       </header>
 
+      <!-- نوار حالت انتخاب چند پیام -->
+      <div id="selectBar" class="select-bar is-hidden">
+        <button id="cancelSelect" type="button" class="icon-btn" aria-label="لغو انتخاب">✕</button>
+        <span id="selectCount" class="count"></span>
+        <button id="copySelected" type="button" class="btn">کپی</button>
+        <button id="deleteSelected" type="button" class="btn btn-danger">حذف</button>
+      </div>
+
       <div class="message-area">
         <div id="messageList" class="message-list"></div>
         <button id="jumpToLatest" class="jump-btn is-hidden" type="button" aria-label="رفتن به آخرین پیام">
@@ -205,9 +213,16 @@
       </div>
 
       <form id="composer" class="composer">
-        <input id="imageInput" type="file" accept="image/*" class="is-hidden" />
+        <input id="imageInput" type="file" accept="image/*" multiple class="is-hidden" />
+        <input id="fileInput" type="file" class="is-hidden" />
         <button id="attachBtn" type="button" class="icon-btn" title="ارسال عکس" aria-label="ارسال عکس">
           <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2Zm0 16H5l3.5-4.5 2.5 3L14.5 12 19 19Z"/></svg>
+        </button>
+        <button id="fileBtn" type="button" class="icon-btn" title="ارسال فایل" aria-label="ارسال فایل">
+          <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M16.5 6.5v9a4.5 4.5 0 0 1-9 0V5a3 3 0 0 1 6 0v9.5a1.5 1.5 0 0 1-3 0V6.5H9V14.5a3 3 0 0 0 6 0V5a4.5 4.5 0 0 0-9 0v10.5a6 6 0 0 0 12 0v-9z"/></svg>
+        </button>
+        <button id="emojiBtn" type="button" class="icon-btn only-desktop" title="ایموجی" aria-label="افزودن ایموجی">
+          <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm-3.5 7a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Zm7 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3ZM12 18a6 6 0 0 1-5.2-3h10.4A6 6 0 0 1 12 18Z"/></svg>
         </button>
         <textarea id="messageInput" rows="1" placeholder="پیام بنویسید…" maxlength="4000"></textarea>
         <button id="micBtn" type="button" class="icon-btn" title="پیام صوتی" aria-label="ضبط پیام صوتی">

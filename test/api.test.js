@@ -410,7 +410,11 @@ test('پاکسازی، پیام‌ها و فایل‌ها را حذف و حسا�
   assert.equal(overview.body.stats.messages, 0);
   assert.equal(overview.body.stats.images, 0);
   assert.ok(overview.body.stats.users >= 3); // حساب‌ها دست‌نخورده مانده‌اند
-  assert.equal(fs.readdirSync(process.env.UPLOAD_DIR).length, 0);
+  // زیرپوشه‌ی آپلودهای در جریان می‌ماند؛ فایلی نباید بماند.
+  const leftovers = fs
+    .readdirSync(process.env.UPLOAD_DIR, { withFileTypes: true })
+    .filter((e) => e.isFile());
+  assert.deepEqual(leftovers.map((e) => e.name), []);
 
   const conversations = await call('/api/conversations', { token: context.adminToken });
   assert.ok(conversations.body.conversations.length > 0); // گفتگوها باقی می‌مانند
@@ -1382,4 +1386,225 @@ test('گزارش کار: کارهای مدیر ثبت می‌شود و نام ب
   // کاربر عادی نباید گزارش را ببیند
   const forbidden = await call('/api/admin/log', { token: chat.pin1Token });
   assert.equal(forbidden.status, 403);
+});
+
+/* ---------------------------- پیوست فایل ---------------------------- */
+
+test('پیوست فایل: ذخیره، سرو امن، و احترام به بلاک', async () => {
+  const store = require('../server/store.js');
+  const send = async (token, name, bytes = 'hello world') => {
+    const form = new FormData();
+    form.append('file', new Blob([bytes], { type: 'application/octet-stream' }), name);
+    const res = await fetch(`${base}/api/conversations/${chat.conversationId}/files`, {
+      method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form,
+    });
+    return { status: res.status, body: await res.json().catch(() => ({})) };
+  };
+
+  const sent = await send(chat.pin1Token, 'گزارش ماهانه.pdf');
+  assert.equal(sent.status, 201);
+  assert.equal(sent.body.message.kind, 'file');
+  assert.equal(sent.body.message.attachment.name, 'گزارش ماهانه.pdf');
+  assert.ok(fs.existsSync(store.filePathFor(sent.body.message.id)));
+
+  const fileToken = (await call('/api/me', { token: chat.pin2Token })).body.fileToken;
+  const got = await fetch(`${base}${sent.body.message.attachment.url}?t=${encodeURIComponent(fileToken)}`);
+  assert.equal(got.status, 200);
+  assert.equal(got.headers.get('content-type'), 'application/pdf');
+  assert.equal(got.headers.get('x-content-type-options'), 'nosniff');
+  // PDF پخش‌شدنی نیست، پس باید دانلود شود نه باز
+  assert.match(got.headers.get('content-disposition') || '', /^attachment/);
+
+  // --- مهم‌ترین بخش: فایلی که می‌تواند اسکریپت اجرا کند ---
+  const nasty = await send(chat.pin1Token, 'evil.html', '<script>alert(1)</script>');
+  assert.equal(nasty.status, 201);
+  const served = await fetch(`${base}${nasty.body.message.attachment.url}?t=${encodeURIComponent(fileToken)}`);
+  assert.equal(
+    served.headers.get('content-type'),
+    'application/octet-stream',
+    'HTML هیچ‌وقت نباید با نوع خودش سرو شود'
+  );
+  assert.match(served.headers.get('content-disposition') || '', /^attachment/);
+
+  const svg = await send(chat.pin1Token, 'x.svg', '<svg xmlns="http://www.w3.org/2000/svg"/>');
+  const svgServed = await fetch(`${base}${svg.body.message.attachment.url}?t=${encodeURIComponent(fileToken)}`);
+  assert.equal(svgServed.headers.get('content-type'), 'application/octet-stream');
+
+  // ویدیو پخش‌شدنی است و درون‌خطی سرو می‌شود
+  const clip = await send(chat.pin1Token, 'clip.mp4');
+  const clipServed = await fetch(`${base}${clip.body.message.attachment.url}?t=${encodeURIComponent(fileToken)}`);
+  assert.equal(clipServed.headers.get('content-type'), 'video/mp4');
+  assert.equal(clipServed.headers.get('content-disposition'), null);
+
+  // نام فایل از مسیر پاک می‌شود
+  const traversal = await send(chat.pin1Token, '../../etc/passwd');
+  assert.equal(traversal.body.message.attachment.name, 'passwd');
+
+  // غیرعضو نمی‌تواند بگیرد
+  const outsiderToken = (await call('/api/me', { token: chat.pin3Token })).body.fileToken;
+  const denied = await fetch(`${base}${sent.body.message.attachment.url}?t=${encodeURIComponent(outsiderToken)}`);
+  assert.equal(denied.status, 403);
+
+  // بلاک باید مسیر فایل را هم ببندد
+  await call('/api/me/blocks', {
+    method: 'POST', token: chat.pin1Token, body: { username: 'pin2' },
+  });
+  const blocked = await send(chat.pin1Token, 'after-block.pdf');
+  assert.equal(blocked.status, 403, 'مسیر فایل هم باید بلاک را رعایت کند');
+  const store2 = require('../server/store.js');
+  await call(`/api/me/blocks/${store2.getUserByUsername('pin2').id}`, {
+    method: 'DELETE', token: chat.pin1Token,
+  });
+});
+
+test('آپلود نیمه‌کاره روی دیسک نمی‌ماند', async () => {
+  const path = require('node:path');
+  const { sweepIncoming } = require('../server/cleanup.js');
+  const incoming = path.join(process.env.UPLOAD_DIR, 'incoming');
+  fs.mkdirSync(incoming, { recursive: true });
+
+  const stale = path.join(incoming, 'up-stale');
+  fs.writeFileSync(stale, 'x');
+  // دو ساعت پیش
+  const old = Date.now() - 2 * 60 * 60 * 1000;
+  fs.utimesSync(stale, old / 1000, old / 1000);
+
+  const fresh = path.join(incoming, 'up-fresh');
+  fs.writeFileSync(fresh, 'x');
+
+  const removed = sweepIncoming();
+  assert.equal(removed, 1);
+  assert.ok(!fs.existsSync(stale), 'آپلود رهاشده باید پاک شود');
+  assert.ok(fs.existsSync(fresh), 'آپلود در جریان نباید پاک شود');
+  fs.rmSync(fresh, { force: true });
+});
+
+/* ------------------ بایگانی، خوانده‌نشده و نقش گروه ------------------ */
+
+test('بایگانی و خوانده‌نشده کردن، فقط برای خود کاربر', async () => {
+  const archived = await call(`/api/conversations/${chat.conversationId}/flags`, {
+    method: 'POST', token: chat.pin1Token, body: { archived: true },
+  });
+  assert.equal(archived.status, 200);
+  assert.equal(archived.body.conversation.archived, true);
+
+  const theirs = await call('/api/conversations', { token: chat.pin2Token });
+  assert.equal(
+    theirs.body.conversations.find((c) => c.id === chat.conversationId).archived,
+    false,
+    'بایگانیِ یک نفر نباید به طرف مقابل سرایت کند'
+  );
+
+  // بایگانی‌شده باید ته فهرست خودش باشد
+  await call('/api/conversations/direct', {
+    method: 'POST', token: chat.pin1Token, body: { username: 'pin3' },
+  });
+  const mine = await call('/api/conversations', { token: chat.pin1Token });
+  assert.equal(mine.body.conversations.at(-1).id, chat.conversationId);
+
+  await call(`/api/conversations/${chat.conversationId}/flags`, {
+    method: 'POST', token: chat.pin1Token, body: { archived: false },
+  });
+
+  // خوانده‌نشده کردن: شمارنده دوباره روشن می‌شود، پیام‌ها دست نمی‌خورند
+  await call(`/api/conversations/${chat.conversationId}/messages`, {
+    method: 'POST', token: chat.pin2Token, body: { body: 'پیام تازه' },
+  });
+  const latest = (await call(`/api/conversations/${chat.conversationId}/messages`, {
+    token: chat.pin1Token,
+  })).body.messages.at(-1).id;
+  await call(`/api/conversations/${chat.conversationId}/read`, {
+    method: 'POST', token: chat.pin1Token, body: { messageId: latest },
+  });
+  const read = await call('/api/conversations', { token: chat.pin1Token });
+  assert.equal(read.body.conversations.find((c) => c.id === chat.conversationId).unread, 0);
+
+  const before = (await call(`/api/conversations/${chat.conversationId}/messages`, {
+    token: chat.pin1Token,
+  })).body.messages.length;
+
+  const marked = await call(`/api/conversations/${chat.conversationId}/flags`, {
+    method: 'POST', token: chat.pin1Token, body: { unread: true },
+  });
+  assert.ok(marked.body.conversation.unread > 0, 'شمارنده باید دوباره روشن شود');
+
+  const after = (await call(`/api/conversations/${chat.conversationId}/messages`, {
+    token: chat.pin1Token,
+  })).body.messages.length;
+  assert.equal(after, before, 'خوانده‌نشده کردن نباید پیامی را پاک کند');
+});
+
+test('نقش مدیر گروه: اختیار محدود و فقط سازنده تعیینش می‌کند', async () => {
+  const store = require('../server/store.js');
+  const ids = Object.fromEntries(['gro1', 'gro2', 'gro3'].map((u) => {
+    const row = store.getUserByUsername(u);
+    return [u, row ? row.id : null];
+  }));
+
+  // کاربران آزمون گروه قبلی ممکن است گروه را ترک کرده باشند؛ گروه تازه می‌سازیم
+  const tokens = {};
+  for (const username of ['gro1', 'gro2', 'gro3']) {
+    if (!ids[username]) {
+      store.createUser({ username, displayName: username, password: 'secret1234', status: 'approved' });
+      ids[username] = store.getUserByUsername(username).id;
+    }
+    const login = await call('/api/auth/login', {
+      method: 'POST', body: { username, password: 'secret1234' },
+    });
+    tokens[username] = login.body.token;
+  }
+
+  const made = await call('/api/conversations/group', {
+    method: 'POST', token: tokens.gro1, body: { title: 'گروه نقش‌ها', memberIds: [ids.gro2, ids.gro3] },
+  });
+  const groupId = made.body.conversation.id;
+
+  // عضو عادی نمی‌تواند نام را عوض کند
+  const before = await call(`/api/conversations/${groupId}`, {
+    method: 'PATCH', token: tokens.gro2, body: { title: 'نه' },
+  });
+  assert.equal(before.status, 403);
+
+  // سازنده او را مدیر می‌کند
+  const promoted = await call(`/api/conversations/${groupId}/members/${ids.gro2}/role`, {
+    method: 'POST', token: tokens.gro1, body: { role: 'admin' },
+  });
+  assert.equal(promoted.status, 200);
+  assert.equal(
+    promoted.body.conversation.members.find((m) => m.id === ids.gro2).role,
+    'admin'
+  );
+
+  // حالا می‌تواند نام را عوض کند و عضو حذف کند
+  const renamed = await call(`/api/conversations/${groupId}`, {
+    method: 'PATCH', token: tokens.gro2, body: { title: 'گروه تازه‌نام' },
+  });
+  assert.equal(renamed.status, 200);
+
+  const kicked = await call(`/api/conversations/${groupId}/members/${ids.gro3}`, {
+    method: 'DELETE', token: tokens.gro2,
+  });
+  assert.equal(kicked.status, 200);
+
+  // ولی نمی‌تواند سازنده را بیرون کند
+  const attack = await call(`/api/conversations/${groupId}/members/${ids.gro1}`, {
+    method: 'DELETE', token: tokens.gro2,
+  });
+  assert.equal(attack.status, 403, 'مدیر گروه نباید بتواند سازنده را حذف کند');
+
+  // و نمی‌تواند مدیر بسازد
+  const escalate = await call(`/api/conversations/${groupId}/members/${ids.gro3}/role`, {
+    method: 'POST', token: tokens.gro2, body: { role: 'admin' },
+  });
+  assert.equal(escalate.status, 403, 'مدیر گروه نباید بتواند مدیر تازه بسازد');
+
+  // سازنده مدیریت را پس می‌گیرد
+  const demoted = await call(`/api/conversations/${groupId}/members/${ids.gro2}/role`, {
+    method: 'POST', token: tokens.gro1, body: { role: 'member' },
+  });
+  assert.equal(demoted.status, 200);
+  const after = await call(`/api/conversations/${groupId}`, {
+    method: 'PATCH', token: tokens.gro2, body: { title: 'دوباره نه' },
+  });
+  assert.equal(after.status, 403);
 });

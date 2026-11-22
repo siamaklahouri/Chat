@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS messages (
   id              INTEGER PRIMARY KEY AUTOINCREMENT,
   conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
   sender_id       INTEGER REFERENCES users(id) ON DELETE SET NULL,
-  kind            TEXT NOT NULL DEFAULT 'text' CHECK (kind IN ('text','image','voice','call','system')),
+  kind            TEXT NOT NULL DEFAULT 'text' CHECK (kind IN ('text','image','voice','file','call','system')),
   body            TEXT NOT NULL DEFAULT '',
   file_name       TEXT,
   file_mime       TEXT,
@@ -96,6 +96,7 @@ for (const [table, column, definition] of [
   ['conversations', 'avatar_at', 'INTEGER'],
   ['members', 'pinned_at', 'INTEGER'],
   ['members', 'muted', 'INTEGER NOT NULL DEFAULT 0'],
+  ['members', 'archived', 'INTEGER NOT NULL DEFAULT 0'],
   ['messages', 'forwarded', 'INTEGER NOT NULL DEFAULT 0'],
   ['sessions', 'user_agent', 'TEXT'],
   ['sessions', 'last_seen_at', 'INTEGER'],
@@ -145,12 +146,30 @@ const messagesSchema =
   db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'messages'").get()?.sql ||
   '';
 
-if (messagesSchema && !messagesSchema.includes("'call'")) {
-  const columns = db
+if (messagesSchema && !messagesSchema.includes("'file'")) {
+  const existing = db
     .prepare('PRAGMA table_info(messages)')
     .all()
-    .map((c) => c.name)
-    .join(', ');
+    .map((c) => c.name);
+
+  // تعریف کامل جدول تازه. هر ستونی که بالا با ALTER اضافه می‌شود باید اینجا
+  // هم باشد، وگرنه کپی کردن داده‌ها شکست می‌خورد و سرویس اصلاً بالا نمی‌آید.
+  const rebuiltColumns = [
+    'id', 'conversation_id', 'sender_id', 'kind', 'body',
+    'file_name', 'file_mime', 'file_size', 'image_width', 'image_height',
+    'duration_ms', 'forwarded', 'reply_to_id', 'created_at', 'edited_at', 'deleted_at',
+  ];
+
+  // اگر روزی ستونی اضافه شد و اینجا یادمان رفت، همین‌جا با پیام روشن
+  // می‌ایستیم — نه با یک خطای مبهم SQL یا، بدتر، با از دست رفتن بی‌صدای داده.
+  const forgotten = existing.filter((name) => !rebuiltColumns.includes(name));
+  if (forgotten.length > 0) {
+    throw new Error(
+      `[db] بازسازی جدول پیام‌ها ناقص است؛ این ستون‌ها در تعریف تازه نیستند: ${forgotten.join(', ')}`
+    );
+  }
+
+  const columns = existing.join(', ');
 
   db.exec('PRAGMA foreign_keys = OFF');
   db.exec('BEGIN IMMEDIATE');
@@ -160,7 +179,7 @@ if (messagesSchema && !messagesSchema.includes("'call'")) {
         id              INTEGER PRIMARY KEY AUTOINCREMENT,
         conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
         sender_id       INTEGER REFERENCES users(id) ON DELETE SET NULL,
-        kind            TEXT NOT NULL DEFAULT 'text' CHECK (kind IN ('text','image','voice','call','system')),
+        kind            TEXT NOT NULL DEFAULT 'text' CHECK (kind IN ('text','image','voice','file','call','system')),
         body            TEXT NOT NULL DEFAULT '',
         file_name       TEXT,
         file_mime       TEXT,
@@ -168,6 +187,7 @@ if (messagesSchema && !messagesSchema.includes("'call'")) {
         image_width     INTEGER,
         image_height    INTEGER,
         duration_ms     INTEGER,
+        forwarded       INTEGER NOT NULL DEFAULT 0,
         reply_to_id     INTEGER REFERENCES messages(id) ON DELETE SET NULL,
         created_at      INTEGER NOT NULL,
         edited_at       INTEGER,
@@ -179,7 +199,7 @@ if (messagesSchema && !messagesSchema.includes("'call'")) {
       CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id, id);
     `);
     db.exec('COMMIT');
-    console.log('[db] جدول پیام‌ها برای پشتیبانی از پیام صوتی و تماس بازسازی شد.');
+    console.log('[db] جدول پیام‌ها برای پشتیبانی از پیوست فایل بازسازی شد.');
   } catch (error) {
     db.exec('ROLLBACK');
     throw error;

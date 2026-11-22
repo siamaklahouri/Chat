@@ -8,7 +8,7 @@ const express = require('express');
 const { router: api, MAX_IMAGE_BYTES, MAX_VOICE_BYTES } = require('./routes');
 const adminRouter = require('./admin');
 const { attach } = require('./realtime');
-const { startScheduler, wipeStatus } = require('./cleanup');
+const { startScheduler, wipeStatus, sweepIncoming } = require('./cleanup');
 const { purgeExpiredSessions } = require('./auth');
 const store = require('./store');
 
@@ -25,6 +25,10 @@ const APK_DIR = process.env.APK_DIR || path.join(__dirname, '..', 'dist');
  */
 const RETENTION_NOTICE =
   process.env.RETENTION_NOTICE ?? 'پیام‌ها و عکس‌ها به‌صورت دوره‌ای پاک می‌شوند';
+
+// آپلودهای نیمه‌کاره‌ی قبل از ریستارت هیچ‌وقت کامل نمی‌شوند؛ جایشان را
+// بی‌دلیل روی دیسک نگه نداریم.
+sweepIncoming();
 
 const app = express();
 app.disable('x-powered-by');
