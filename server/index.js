@@ -25,9 +25,11 @@ const APK_DIR = process.env.APK_DIR || path.join(__dirname, '..', 'dist');
  * عوض کردن یک تنظیم نباید به همه بگوید «نسخه‌ی تازه آمده». فقط وقتی عوض
  * می‌شود که واقعاً کد سمت کاربر عوض شده باشد.
  */
+const CLIENT_FILES = ['index.html', 'js/app.js', 'css/style.css', 'sw.js'];
+
 const CLIENT_VERSION = (() => {
   const hash = crypto.createHash('sha256');
-  for (const file of ['index.html', 'js/app.js', 'css/style.css', 'sw.js']) {
+  for (const file of CLIENT_FILES) {
     try {
       hash.update(fs.readFileSync(path.join(PUBLIC_DIR, file)));
     } catch {
@@ -35,6 +37,19 @@ const CLIENT_VERSION = (() => {
     }
   }
   return hash.digest('hex').slice(0, 12);
+})();
+
+/** تازه‌ترین زمان تغییر فایل‌های وب — برای نمایش خوانا به کاربر. */
+const CLIENT_BUILT_AT = (() => {
+  let newest = 0;
+  for (const file of CLIENT_FILES) {
+    try {
+      newest = Math.max(newest, fs.statSync(path.join(PUBLIC_DIR, file)).mtimeMs);
+    } catch {
+      /* بی‌خیال */
+    }
+  }
+  return newest || null;
 })();
 
 /**
@@ -177,6 +192,7 @@ app.get('/api/version', (req, res) => {
   const file = newestApk();
   res.json({
     client: CLIENT_VERSION,
+    builtAt: CLIENT_BUILT_AT,
     android: file ? apkVersion(path.basename(file)) : null,
   });
 });

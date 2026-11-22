@@ -30,6 +30,7 @@
     searchTimer: null,
     clientVersion: null,
     androidVersion: null,
+    builtAt: null,
     updateDismissed: false,
     typingTimer: null,
     typingSentAt: 0,
@@ -2920,6 +2921,64 @@
     return wrap;
   }
 
+  /** «1.4» → «۱.۴» — فقط رقم‌ها عوض می‌شوند، نه نقطه‌ها. */
+  const faDigits = (text) =>
+    String(text).replace(/[0-9]/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[Number(d)]);
+
+  /** نسخه‌ی برنامه، برای وقتی کاربر یا من بخواهیم بدانیم چه چیزی در دست اوست. */
+  function aboutSection() {
+    const wrap = document.createElement('div');
+    wrap.className = 'stack';
+
+    const line = (label, value) => {
+      const row = document.createElement('div');
+      row.className = 'about-row';
+      row.append(
+        Object.assign(document.createElement('span'), { className: 'muted', textContent: label }),
+        Object.assign(document.createElement('b'), { textContent: value })
+      );
+      return row;
+    };
+
+    const built = state.builtAt
+      ? new Date(state.builtAt).toLocaleDateString('fa-IR', {
+          year: 'numeric', month: 'long', day: 'numeric',
+        })
+      : '—';
+    wrap.appendChild(line('نسخه‌ی وب', `${built} (${state.clientVersion || '—'})`));
+
+    // نسخه‌ی اپ را فقط خود اپ می‌داند، و آن هم از ۱.۴ به بعد.
+    const installed = window.AndroidBridge?.appVersion?.();
+    if (installed) {
+      wrap.appendChild(line('اپ اندروید', faDigits(installed)));
+    } else if (window.AndroidBridge) {
+      const hint = document.createElement('small');
+      hint.className = 'muted';
+      hint.textContent =
+        'نسخه‌ی اپ را اینجا نشان نمی‌دهد چون نسخه‌ی نصب‌شده قدیمی‌تر از ۱.۴ است؛ ' +
+        'از تنظیمات گوشی ← برنامه‌ها ← 9chat ببینیدش.';
+      wrap.appendChild(hint);
+    }
+
+    const copy = document.createElement('button');
+    copy.type = 'button';
+    copy.className = 'btn';
+    copy.textContent = 'کپی اطلاعات نسخه';
+    copy.addEventListener('click', async () => {
+      const text = [
+        `نسخه‌ی وب: ${state.clientVersion || '—'} (${built})`,
+        installed ? `اپ اندروید: ${installed}` : null,
+        `APK روی سرور: ${state.androidVersion || '—'}`,
+      ]
+        .filter(Boolean)
+        .join('\n');
+      const ok = await copyText(text);
+      toast(ok ? 'اطلاعات نسخه کپی شد.' : 'کپی ممکن نشد.', !ok);
+    });
+    wrap.appendChild(copy);
+    return wrap;
+  }
+
   function profileModal() {
     openModal('پروفایل', (body) => {
       const photo = avatarEditor();
@@ -3022,7 +3081,9 @@
         blockedSection(),
         sectionTitle('سایر'),
         notifyBtn,
-        logout
+        logout,
+        sectionTitle('درباره‌ی برنامه'),
+        aboutSection()
       );
     });
   }
@@ -3604,6 +3665,7 @@
     if (!state.clientVersion) {
       state.clientVersion = data.client;
       state.androidVersion = data.android;
+      state.builtAt = data.builtAt;
     }
 
     if (data.client !== state.clientVersion && !state.updateDismissed) {
@@ -3619,7 +3681,7 @@
     const installed = window.AndroidBridge?.appVersion?.();
     if (installed && isNewer(data.android, installed) && !state.updateDismissed) {
       showUpdateBar({
-        text: `نسخه‌ی ${data.android} اپ اندروید آمده است (شما ${installed} دارید).`,
+        text: `نسخه‌ی ${faDigits(data.android)} اپ اندروید آمده است (شما ${faDigits(installed)} دارید).`,
         action: 'دریافت',
         onClick: () => {
           window.open('/app.apk', '_blank');

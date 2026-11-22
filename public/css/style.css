@@ -908,3 +908,6 @@ html[dir='rtl'] .conversation.is-active { box-shadow: inset -3px 0 0 var(--accen
   .update-bar:not(.is-hidden) { animation: drop .2s ease-out; }
   @keyframes drop { from { transform: translateY(-100%); } to { transform: none; } }
 }
+
+.about-row { display: flex; align-items: baseline; gap: 8px; font-size: 13px; }
+.about-row b { margin-inline-start: auto; font-variant-numeric: tabular-nums; }
