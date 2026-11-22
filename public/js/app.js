@@ -1566,6 +1566,9 @@
           if (conv.peer?.id === event.user.id) {
             conv.peer = { ...conv.peer, ...event.user };
             conv.title = event.user.displayName;
+            // در گفتگوی دونفره، عکس گفتگو همان عکس طرف مقابل است.
+            conv.avatarColor = event.user.avatarColor;
+            conv.avatarUrl = event.user.avatarUrl;
           }
           touched = true;
         }

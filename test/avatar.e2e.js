@@ -46,7 +46,11 @@ const avatarStyle = (page, sel) => page.$eval(sel, (e) => ({
   const direct = store.getOrCreateDirect(adminId, saraId).conversation;
   store.createMessage({ conversationId: direct.id, senderId: saraId, body: 'سلام' });
 
-  const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', args: ['--no-sandbox'] });
+  const browser = await chromium.launch({
+    // در محیط‌هایی که Chromium جای دیگری نصب شده، با CHROMIUM_PATH مشخص کنید.
+    executablePath: process.env.CHROMIUM_PATH || undefined,
+    args: ['--no-sandbox'],
+  });
   const errors = [];
   const ctxA = await browser.newContext({ viewport: { width: 1280, height: 820 } });
   const ctxB = await browser.newContext({ viewport: { width: 1280, height: 820 } });
