@@ -1108,6 +1108,15 @@
     return button;
   }
 
+  /* شناسه‌ی پیام‌هایی که یک‌بار روی صفحه آمده‌اند. تاریخچه‌ای که یکجا بار
+     می‌شود از همان اول «دیده» حساب می‌شود، وگرنه با باز کردن هر گفتگو کل
+     صفحه با هم می‌پرید. */
+  const seenMessageIds = new Set();
+
+  const markAlreadySeen = (messages) => {
+    for (const message of messages) if (message.id != null) seenMessageIds.add(message.id);
+  };
+
   function renderMessages({ keepScroll = false, toBottom = null } = {}) {
     const list = $('messageList');
     const previousHeight = list.scrollHeight;
@@ -1147,7 +1156,14 @@
         previous &&
         previous.senderId === message.senderId &&
         message.createdAt - previous.createdAt < 5 * 60 * 1000;
-      list.appendChild(buildBubble(message, Boolean(grouped)));
+      const row = buildBubble(message, Boolean(grouped));
+      // «تازه» یعنی این پیام را هنوز ندیده‌ایم. فهرست در هر بازرسم از نو
+      // ساخته می‌شود، پس بدون این نشانه همه‌ی پیام‌ها با هم می‌پریدند.
+      if (message.id != null && !seenMessageIds.has(message.id)) {
+        seenMessageIds.add(message.id);
+        row.classList.add('is-new');
+      }
+      list.appendChild(row);
       previous = message;
     }
 
@@ -1311,6 +1327,8 @@
       ]);
       state.conversations.set(id, conversation);
       state.messages = data.messages;
+      seenMessageIds.clear();
+      markAlreadySeen(state.messages);
       state.hasMore = data.hasMore;
       renderChatHeader();
       const composer = $('composer');
@@ -1336,6 +1354,7 @@
       const data = await api(
         `/conversations/${state.activeId}/messages?limit=40&before=${state.messages[0].id}`
       );
+      markAlreadySeen(data.messages);
       state.messages = [...data.messages, ...state.messages];
       state.hasMore = data.hasMore;
       renderMessages({ keepScroll: true });

@@ -952,8 +952,25 @@ html[dir='rtl'] #backBtn svg { transform: scaleX(-1); }
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .message-row { animation: pop .16s ease-out; }
-  @keyframes pop { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  /* فقط پیام تازه. قبلاً روی هر بازرسمی کل تاریخچه با هم می‌پرید که
+     به‌جای صیقلی، شلوغ به نظر می‌رسید. */
+  .message-row.is-new { animation: pop .18s ease-out; }
+  @keyframes pop { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+  /* باز شدن گفتگو روی موبایل: سُر خوردن از سمتی که از آن می‌آید. بدون این،
+     صفحه ناگهان عوض می‌شود و حس «سایت» می‌دهد نه «برنامه». */
+  @media (max-width: 820px) {
+    .app-screen.show-chat .chat-panel { animation: push-in .2s cubic-bezier(.2, .8, .2, 1); }
+    @keyframes push-in {
+      from { opacity: .3; transform: translateX(-26px); }
+      to { opacity: 1; transform: none; }
+    }
+    html[dir='rtl'] .app-screen.show-chat .chat-panel { animation-name: push-in-rtl; }
+    @keyframes push-in-rtl {
+      from { opacity: .3; transform: translateX(26px); }
+      to { opacity: 1; transform: none; }
+    }
+  }
 
   .modal-root:not(.is-hidden) .modal-backdrop { animation: fade .16s ease-out; }
   .modal-root:not(.is-hidden) .modal { animation: rise .18s cubic-bezier(.2, .8, .2, 1); }
@@ -1201,3 +1218,34 @@ html[dir='rtl'] #backBtn svg { transform: scaleX(-1); }
 /* فهرست‌هایی که با تأخیر از سرور پر می‌شوند. ارتفاع کمینه نگه می‌دارد تا
    وقتی داده می‌رسد، بقیه‌ی پنجره زیر دست کاربر بالا و پایین نپرد. */
 .async-list { min-height: 72px; }
+
+/* --------------------------- بازخورد لمس ---------------------------
+   روی گوشی hover وجود ندارد، پس تنها بازخوردِ لمس همین :active است. بدون
+   آن هر ضربه «نگرفته» حس می‌شود — همان چیزی که برنامه را ارزان نشان می‌دهد.
+   بازخورد باید فوری باشد، پس اینجا transition نمی‌گذاریم. */
+
+.conversation:active { background: var(--bg-3); }
+.story-item:active .story-ring { transform: scale(.94); }
+.story-item .story-ring { transition: transform .1s ease; }
+
+.btn:active { background: var(--line); }
+.btn-primary:active, .send-btn:active { filter: brightness(.9); }
+.btn:active, .btn-primary:active, .send-btn:active, .icon-btn:active { transform: scale(.96); }
+
+.user-row:active, .device-row:active { background: var(--bg-3); }
+.reaction:active, .reaction-picker button:active { transform: scale(.9); }
+.look-row button:active, .wall-chip:active, .swatch:active { transform: scale(.95); }
+.emoji-grid button:active { transform: scale(.85); }
+.bubble:active { filter: brightness(1.08); }
+
+/* همه‌ی این‌ها فشرده می‌شوند، پس باید مرکز فشردگی درست باشد. */
+.btn, .btn-primary, .send-btn, .icon-btn,
+.reaction, .look-row button, .wall-chip, .swatch { transform-origin: center; }
+
+@media (prefers-reduced-motion: reduce) {
+  .conversation:active, .user-row:active, .device-row:active { background: var(--bg-3); }
+  .btn:active, .btn-primary:active, .send-btn:active, .icon-btn:active,
+  .reaction:active, .reaction-picker button:active,
+  .look-row button:active, .wall-chip:active, .swatch:active,
+  .emoji-grid button:active, .story-item:active .story-ring { transform: none; }
+}
