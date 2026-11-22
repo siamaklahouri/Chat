@@ -1,5 +1,6 @@
 'use strict';
 
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
@@ -16,6 +17,25 @@ const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || '0.0.0.0';
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 const APK_DIR = process.env.APK_DIR || path.join(__dirname, '..', 'dist');
+
+/**
+ * شناسه‌ی نسخه‌ی کدِ سمت کاربر.
+ *
+ * از روی خود فایل‌های وب ساخته می‌شود، نه از زمان راه‌اندازی: ری‌استارت برای
+ * عوض کردن یک تنظیم نباید به همه بگوید «نسخه‌ی تازه آمده». فقط وقتی عوض
+ * می‌شود که واقعاً کد سمت کاربر عوض شده باشد.
+ */
+const CLIENT_VERSION = (() => {
+  const hash = crypto.createHash('sha256');
+  for (const file of ['index.html', 'js/app.js', 'css/style.css', 'sw.js']) {
+    try {
+      hash.update(fs.readFileSync(path.join(PUBLIC_DIR, file)));
+    } catch {
+      /* نبودِ یک فایل نباید راه‌اندازی را بخواباند */
+    }
+  }
+  return hash.digest('hex').slice(0, 12);
+})();
 
 /**
  * نوشته‌ای که پایین ستون گفتگوها به کاربر نشان داده می‌شود.
@@ -130,15 +150,34 @@ app.get('/app.apk', (req, res) => {
   res.download(file, path.basename(file));
 });
 
+/** شماره‌ی نسخه از نام فایل: «9chat-1.4.apk» → «1.4» */
+const apkVersion = (name) => /-([0-9][0-9.]*)\.apk$/.exec(name || '')?.[1] || null;
+
 /** نسخه‌ی موجود، تا صفحه بتواند نام فایل و حجمش را نشان بدهد. */
 app.get('/api/app/android', (req, res) => {
   const file = newestApk();
   if (!file) return res.json({ available: false });
+  const name = path.basename(file);
   res.json({
     available: true,
-    name: path.basename(file),
+    name,
+    version: apkVersion(name),
     size: fs.statSync(file).size,
     url: '/app.apk',
+  });
+});
+
+/**
+ * نسخه‌ی کد وب و نسخه‌ی اپ اندروید، بدون نیاز به ورود.
+ *
+ * صفحه‌ای که ساعت‌ها باز مانده با این می‌فهمد کد تازه‌ای روی سرور رفته و به
+ * کاربر پیشنهاد تازه‌سازی می‌دهد.
+ */
+app.get('/api/version', (req, res) => {
+  const file = newestApk();
+  res.json({
+    client: CLIENT_VERSION,
+    android: file ? apkVersion(path.basename(file)) : null,
   });
 });
 

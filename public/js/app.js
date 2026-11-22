@@ -28,6 +28,9 @@
     missedWhileUp: 0,
     stickToBottom: true,
     searchTimer: null,
+    clientVersion: null,
+    androidVersion: null,
+    updateDismissed: false,
     typingTimer: null,
     typingSentAt: 0,
     socket: null,
@@ -3558,6 +3561,78 @@
     closeModal();
   });
 
+  /* --------------------------- نسخه‌ی تازه --------------------------- */
+
+  /**
+   * اگر کد سمت کاربر روی سرور عوض شده باشد، یا اپ اندرویدِ تازه‌تری موجود
+   * باشد، یک نوار بالای صفحه پیشنهاد به‌روزرسانی می‌دهد.
+   *
+   * نسخه‌ی کد از روی خود فایل‌های وب ساخته می‌شود، پس ری‌استارت ساده‌ی سرور
+   * این نوار را بی‌دلیل نمی‌آورد.
+   */
+  const VERSION_CHECK_MS = 20 * 60_000;
+
+  /** مقایسه‌ی نسخه‌های نقطه‌دار: «۱.۱۰» تازه‌تر از «۱.۹» است. */
+  function isNewer(candidate, current) {
+    if (!candidate || !current) return false;
+    const a = String(candidate).split('.').map(Number);
+    const b = String(current).split('.').map(Number);
+    for (let i = 0; i < Math.max(a.length, b.length); i += 1) {
+      const x = a[i] || 0;
+      const y = b[i] || 0;
+      if (x !== y) return x > y;
+    }
+    return false;
+  }
+
+  function showUpdateBar({ text, action, onClick }) {
+    $('updateText').textContent = text;
+    $('updateAction').textContent = action;
+    $('updateAction').onclick = onClick;
+    $('updateBar').classList.remove('is-hidden');
+  }
+
+  async function checkForUpdate() {
+    let data;
+    try {
+      data = await api('/version');
+    } catch {
+      return; // قطعی شبکه ربطی به نسخه ندارد
+    }
+
+    // نخستین بار فقط ثبت می‌کنیم؛ همین نسخه‌ای است که الان اجرا می‌شود.
+    if (!state.clientVersion) {
+      state.clientVersion = data.client;
+      state.androidVersion = data.android;
+    }
+
+    if (data.client !== state.clientVersion && !state.updateDismissed) {
+      showUpdateBar({
+        text: 'نسخه‌ی تازه‌ای از برنامه آمده است.',
+        action: 'تازه‌سازی',
+        onClick: () => location.reload(),
+      });
+      return;
+    }
+
+    // نسخه‌ی اپ اندروید را فقط خودِ اپ می‌داند؛ مرورگر معمولی خبر ندارد.
+    const installed = window.AndroidBridge?.appVersion?.();
+    if (installed && isNewer(data.android, installed) && !state.updateDismissed) {
+      showUpdateBar({
+        text: `نسخه‌ی ${data.android} اپ اندروید آمده است (شما ${installed} دارید).`,
+        action: 'دریافت',
+        onClick: () => {
+          window.open('/app.apk', '_blank');
+        },
+      });
+    }
+  }
+
+  $('updateDismiss').addEventListener('click', () => {
+    state.updateDismissed = true;
+    $('updateBar').classList.add('is-hidden');
+  });
+
   /** اگر فایل نصبی روی سرور باشد، پیوند دانلودش را در صفحه‌ی ورود نشان می‌دهد. */
   async function showApkLink() {
     try {
@@ -3573,6 +3648,12 @@
 
   async function boot() {
     showApkLink();
+    checkForUpdate();
+    setInterval(checkForUpdate, VERSION_CHECK_MS);
+    // برگشتن به برنامه بعد از مدتی، بهترین لحظه برای بررسی است.
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') checkForUpdate();
+    });
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').catch(() => {});
       navigator.serviceWorker.addEventListener('message', (event) => {

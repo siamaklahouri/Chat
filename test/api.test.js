@@ -1608,3 +1608,32 @@ test('نقش مدیر گروه: اختیار محدود و فقط سازنده �
   });
   assert.equal(after.status, 403);
 });
+
+/* --------------------------- نسخه و به‌روزرسانی --------------------------- */
+
+test('نسخه: شناسه‌ی کد وب از روی خود فایل‌ها ساخته می‌شود', async () => {
+  const res = await call('/api/version');
+  assert.equal(res.status, 200, 'این مسیر نباید نیاز به ورود داشته باشد');
+  assert.match(res.body.client, /^[0-9a-f]{12}$/);
+
+  // دو بار خواندن باید یکی باشد؛ وگرنه هر بررسی یک «نسخه‌ی تازه» جعلی می‌ساخت
+  const again = await call('/api/version');
+  assert.equal(again.body.client, res.body.client);
+});
+
+test('نسخه‌ی اپ اندروید از نام فایل درست خوانده می‌شود', async () => {
+  const apkDir = path.join(TMP, 'apk-version');
+  fs.mkdirSync(apkDir, { recursive: true });
+  const { newestApkFor } = require('../server/index.js');
+
+  for (const name of ['9chat-1.2.apk', '9chat-1.10.apk', '9chat-1.9.apk']) {
+    fs.writeFileSync(path.join(apkDir, name), 'x');
+  }
+  // مقایسه باید عددی باشد: ۱.۱۰ تازه‌تر از ۱.۹
+  assert.equal(path.basename(newestApkFor(apkDir)), '9chat-1.10.apk');
+
+  const info = await call('/api/app/android');
+  if (info.body.available) {
+    assert.match(info.body.version, /^[0-9][0-9.]*$/, 'نسخه باید از نام فایل درآمده باشد');
+  }
+});

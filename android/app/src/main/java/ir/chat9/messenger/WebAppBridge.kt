@@ -23,6 +23,14 @@ class WebAppBridge(
     private val onPermissionNeeded: () -> Unit
 ) {
 
+    /**
+     * نسخه‌ی نصب‌شده‌ی اپ، تا صفحه بتواند با نسخه‌ی روی سرور مقایسه کند و اگر
+     * تازه‌تری آمده بود پیشنهاد به‌روزرسانی بدهد. مرورگر معمولی این را ندارد،
+     * پس صفحه از نبودش می‌فهمد که داخل اپ نیست.
+     */
+    @JavascriptInterface
+    fun appVersion(): String = BuildConfig.VERSION_NAME
+
     @JavascriptInterface
     fun notify(title: String?, body: String?, tag: String?) {
         if (!isTrustedPage()) return

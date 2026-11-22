@@ -883,3 +883,28 @@ html[dir='rtl'] .conversation.is-active { box-shadow: inset -3px 0 0 var(--accen
 }
 .select-bar .count { flex: 1; font-weight: 600; font-size: 14px; }
 .select-bar .btn { padding: 7px 14px; font-size: 13px; }
+
+/* ------------------------- نوار نسخه‌ی تازه ------------------------- */
+
+.update-bar {
+  position: fixed; inset-inline: 0; top: 0; z-index: 90;
+  display: flex; align-items: center; gap: 10px;
+  padding: calc(10px + var(--safe-top)) 14px 10px;
+  background: var(--accent); color: #fff;
+  box-shadow: 0 6px 20px var(--shadow);
+  font-size: 14px;
+}
+.update-bar span { flex: 1; min-width: 0; }
+.update-bar .btn {
+  flex: none; padding: 7px 14px; font-size: 13px;
+  background: rgba(255, 255, 255, .18); border-color: rgba(255, 255, 255, .3); color: #fff;
+}
+.update-bar .icon-btn { flex: none; color: rgba(255, 255, 255, .85); width: 32px; height: 32px; }
+@media (hover: hover) {
+  .update-bar .btn:hover { background: rgba(255, 255, 255, .28); border-color: rgba(255, 255, 255, .5); }
+  .update-bar .icon-btn:hover { background: rgba(255, 255, 255, .18); color: #fff; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .update-bar:not(.is-hidden) { animation: drop .2s ease-out; }
+  @keyframes drop { from { transform: translateY(-100%); } to { transform: none; } }
+}
