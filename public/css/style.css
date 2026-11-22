@@ -724,7 +724,14 @@ html[dir='rtl'] .conversation.is-active { box-shadow: inset -3px 0 0 var(--accen
   display: flex; align-items: center; justify-content: space-between;
   padding: 12px 14px; border-bottom: 1px solid var(--line);
 }
-.modal-body { padding: 14px; overflow-y: auto; display: grid; gap: 12px; }
+.modal-body {
+  padding: 14px; overflow-y: auto; display: grid; gap: 12px;
+  /* کشیدن به بالا در سرِ فهرست نباید به صفحه‌ی زیرین سرایت کند؛ وگرنه روی
+     اندروید لاستیکِ صفحه و اسکرول پنجره با هم می‌جنگند و حس «هنگ» می‌دهد. */
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+}
 
 .modal-divider {
   margin-top: 10px; padding-top: 14px;
@@ -867,9 +874,12 @@ html[dir='rtl'] .conversation.is-active { box-shadow: inset -3px 0 0 var(--accen
 
 @media (max-width: 820px) {
   /* پنجره‌ها مثل برنامه‌های بومی از پایین بالا می‌آیند، نه وسط صفحه. */
-  .modal-root { place-items: end stretch; padding: 0; }
+  /* بلندیِ ورق از خودِ لایه‌ی fixed گرفته می‌شود، نه از dvh: روی اندروید
+     با پنهان و پیدا شدن نوار آدرس، dvh وسط اسکرول عوض می‌شود و چیدمان
+     پشت‌سرهم از نو ساخته می‌شود — همان چیزی که مثل هنگ به چشم می‌آید. */
+  .modal-root { place-items: end stretch; padding: 44px 0 0; }
   .modal {
-    width: 100%; max-height: 88dvh;
+    width: 100%; max-height: 100%;
     border-radius: 24px 24px 0 0;
     border-inline: 0; border-bottom: 0;
     padding-bottom: var(--safe-bottom);

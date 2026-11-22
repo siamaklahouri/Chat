@@ -155,9 +155,13 @@
       WALLS.some(([id]) => id === name) ? name : DEFAULT_WALL;
   }
 
-  /** پنجره‌ی «ظاهر»: تم، رنگ لهجه و پس‌زمینه در یک جا. */
-  function appearanceModal() {
-    openModal('ظاهر', (body) => {
+  /**
+   * سه انتخابگرِ ظاهر در یک جعبه. هم از دکمه‌ی سربرگ باز می‌شود و هم
+   * داخل پنجره‌ی پروفایل می‌نشیند — چون کاربر تم را آنجا می‌جوید.
+   */
+  function appearanceSection() {
+    const box = document.createElement('div');
+    {
       const section = (heading, className) => {
         const wrap = document.createElement('div');
         wrap.className = 'look-section';
@@ -166,7 +170,7 @@
         const row = document.createElement('div');
         row.className = className;
         wrap.append(title, row);
-        body.appendChild(wrap);
+        box.appendChild(wrap);
         return row;
       };
 
@@ -225,7 +229,13 @@
         });
         wallRow.appendChild(button);
       }
-    });
+    }
+    return box;
+  }
+
+  /** همان جعبه، این بار به‌تنهایی از دکمه‌ی سربرگ. */
+  function appearanceModal() {
+    openModal('ظاهر', (body) => body.appendChild(appearanceSection()));
   }
 
   applyTheme(localStorage.getItem(THEME_KEY));
@@ -3242,6 +3252,8 @@
         devicesSection(),
         sectionTitle('کاربران بلاک‌شده'),
         blockedSection(),
+        sectionTitle('ظاهر'),
+        appearanceSection(),
         sectionTitle('سایر'),
         notifyBtn,
         logout,
