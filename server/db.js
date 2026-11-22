@@ -94,6 +94,9 @@ for (const [table, column, definition] of [
   ['messages', 'duration_ms', 'INTEGER'],
   ['users', 'avatar_at', 'INTEGER'],
   ['conversations', 'avatar_at', 'INTEGER'],
+  ['members', 'pinned_at', 'INTEGER'],
+  ['members', 'muted', 'INTEGER NOT NULL DEFAULT 0'],
+  ['messages', 'forwarded', 'INTEGER NOT NULL DEFAULT 0'],
 ]) {
   const existing = db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
   if (!existing.includes(column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
@@ -106,6 +109,17 @@ for (const [table, column, definition] of [
  * جدول تازه، کپی داده‌ها، حذف قدیمی و تغییر نام. همه داخل یک تراکنش انجام
  * می‌شود تا اگر وسط کار چیزی خطا داد، داده‌ها دست‌نخورده بمانند.
  */
+db.exec(`
+  CREATE TABLE IF NOT EXISTS reactions (
+    message_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    emoji      TEXT    NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (message_id, user_id, emoji)
+  );
+  CREATE INDEX IF NOT EXISTS idx_reactions_message ON reactions(message_id);
+`);
+
 const messagesSchema =
   db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'messages'").get()?.sql ||
   '';

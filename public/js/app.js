@@ -25,6 +25,7 @@
     typingPeers: new Map(),
     missedWhileUp: 0,
     stickToBottom: true,
+    searchTimer: null,
     typingTimer: null,
     typingSentAt: 0,
     socket: null,
@@ -247,6 +248,29 @@
     return prefix + message.body;
   }
 
+  /** منوی کوتاه یک گفتگو: سنجاق، بی‌صدا، حذف. */
+  function conversationMenu(conv) {
+    openModal(conv.title, (body) => {
+      const make = (label, onClick, danger = false) => {
+        const button = document.createElement('button');
+        button.className = `btn${danger ? ' btn-danger' : ''}`;
+        button.textContent = label;
+        button.addEventListener('click', onClick);
+        return button;
+      };
+      body.append(
+        make(conv.pinned ? '📌 برداشتن سنجاق' : '📌 سنجاق کردن', async () => {
+          await setConversationFlag(conv, { pinned: !conv.pinned });
+          closeModal();
+        }),
+        make(conv.muted ? '🔔 روشن کردن صدا' : '🔕 بی‌صدا کردن', async () => {
+          await setConversationFlag(conv, { muted: !conv.muted });
+          closeModal();
+        })
+      );
+    });
+  }
+
   function renderConversations() {
     const list = $('conversationList');
     const filter = state.filter.trim().toLowerCase();
@@ -264,7 +288,14 @@
 
     for (const conv of items) {
       const button = document.createElement('button');
-      button.className = `conversation${conv.id === state.activeId ? ' is-active' : ''}`;
+      button.className = `conversation${conv.id === state.activeId ? ' is-active' : ''}${
+        conv.pinned ? ' is-pinned' : ''
+      }`;
+      // نگه‌داشتن انگشت یا راست‌کلیک: سنجاق و بی‌صدا
+      button.addEventListener('contextmenu', (event) => {
+        event.preventDefault();
+        conversationMenu(conv);
+      });
       button.innerHTML = `
         <span class="avatar"></span>
         <span class="conversation-main">
@@ -284,7 +315,19 @@
         online,
         conv.avatarUrl
       );
-      button.querySelector('.conversation-name').textContent = conv.title;
+      const nameCell = button.querySelector('.conversation-name');
+      nameCell.textContent = conv.title;
+      for (const [flag, mark, title] of [
+        [conv.pinned, '📌', 'سنجاق‌شده'],
+        [conv.muted, '🔕', 'بی‌صدا'],
+      ]) {
+        if (!flag) continue;
+        const icon = document.createElement('span');
+        icon.className = 'conversation-flag';
+        icon.textContent = mark;
+        icon.title = title;
+        nameCell.appendChild(icon);
+      }
       button.querySelector('.conversation-top small').textContent = conv.lastMessage
         ? timeText(conv.lastMessage.createdAt)
         : '';
@@ -428,6 +471,13 @@
       }
     }
 
+    if (message.forwarded && !message.deleted) {
+      const tag = document.createElement('div');
+      tag.className = 'bubble-forwarded';
+      tag.textContent = '↪ بازفرستاده‌شده';
+      bubble.appendChild(tag);
+    }
+
     if (message.replyTo) {
       const reply = document.createElement('div');
       reply.className = 'bubble-reply';
@@ -505,9 +555,13 @@
     }
     bubble.appendChild(meta);
 
+    if (message.reactions?.length) bubble.appendChild(reactionBar(message));
+
     if (!message.deleted && !message.pending) {
       const actions = document.createElement('div');
       actions.className = 'bubble-actions';
+      actions.appendChild(iconButton('😊', 'واکنش', () => openReactionPicker(message)));
+      actions.appendChild(iconButton('↪', 'بازفرستادن', () => forwardModal(message)));
       actions.appendChild(iconButton('↩', 'پاسخ', () => startReply(message)));
       if (mine && message.kind !== 'voice') {
         actions.appendChild(iconButton('✎', 'ویرایش', () => startEdit(message)));
@@ -643,6 +697,92 @@
     return span;
   }
 
+  const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏', '🔥', '👏'];
+
+  /** نوار واکنش‌های زیر حباب. */
+  function reactionBar(message) {
+    const bar = document.createElement('div');
+    bar.className = 'reactions';
+    for (const item of message.reactions) {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = `reaction${item.mine ? ' is-mine' : ''}`;
+      chip.title = item.mine ? 'برداشتن واکنش' : 'همین واکنش';
+      chip.append(item.emoji, Object.assign(document.createElement('span'), { textContent: fa(item.count) }));
+      chip.addEventListener('click', () => sendReaction(message, item.emoji));
+      bar.appendChild(chip);
+    }
+    return bar;
+  }
+
+  async function sendReaction(message, emoji) {
+    try {
+      await api(`/messages/${message.id}/reactions`, { method: 'POST', body: { emoji } });
+    } catch (err) {
+      toast(err.message, true);
+    }
+  }
+
+  function openReactionPicker(message) {
+    openModal('واکنش', (body) => {
+      const grid = document.createElement('div');
+      grid.className = 'reaction-picker';
+      for (const emoji of REACTIONS) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = emoji;
+        button.addEventListener('click', async () => {
+          await sendReaction(message, emoji);
+          closeModal();
+        });
+        grid.appendChild(button);
+      }
+      body.appendChild(grid);
+    });
+  }
+
+  /** انتخاب گفتگوی مقصد برای بازفرستادن. */
+  function forwardModal(message) {
+    openModal('بازفرستادن به…', (body) => {
+      const list = document.createElement('div');
+      list.style.display = 'grid';
+      list.style.gap = '6px';
+      const others = [...state.conversations.values()].filter((c) => !c.orphaned);
+      if (others.length === 0) {
+        body.innerHTML = '<p class="empty-list">گفتگویی برای بازفرستادن نیست.</p>';
+        return;
+      }
+      for (const conv of others) {
+        const row = document.createElement('button');
+        row.type = 'button';
+        row.className = 'user-row';
+        const avatar = document.createElement('span');
+        avatar.className = 'avatar';
+        paintAvatar(avatar, conv.title, conv.avatarColor, false, conv.avatarUrl);
+        const main = document.createElement('span');
+        main.className = 'user-row-main';
+        main.append(Object.assign(document.createElement('strong'), { textContent: conv.title }));
+        row.append(avatar, main);
+        row.addEventListener('click', async () => {
+          row.disabled = true;
+          try {
+            await api(`/conversations/${conv.id}/forward`, {
+              method: 'POST',
+              body: { messageId: message.id },
+            });
+            closeModal();
+            toast(`به «${conv.title}» فرستاده شد.`);
+          } catch (err) {
+            toast(err.message, true);
+            row.disabled = false;
+          }
+        });
+        list.appendChild(row);
+      }
+      body.appendChild(list);
+    });
+  }
+
   function iconButton(label, title, onClick) {
     const button = document.createElement('button');
     button.type = 'button';
@@ -759,7 +899,34 @@
     return list.scrollHeight - list.scrollTop - list.clientHeight < 120;
   };
 
+  const DRAFT_KEY = (id) => `messenger.draft.${id}`;
+
+  function saveDraft() {
+    if (!state.activeId || state.editing) return;
+    const text = $('messageInput').value;
+    try {
+      if (text.trim()) localStorage.setItem(DRAFT_KEY(state.activeId), text);
+      else localStorage.removeItem(DRAFT_KEY(state.activeId));
+    } catch {
+      /* حافظه‌ی مرورگر ممکن است در دسترس نباشد */
+    }
+  }
+
+  function loadDraft(id) {
+    let text = '';
+    try {
+      text = localStorage.getItem(DRAFT_KEY(id)) || '';
+    } catch {
+      /* بی‌خیال */
+    }
+    const input = $('messageInput');
+    input.value = text;
+    autoGrow();
+  }
+
   async function openConversation(id) {
+    // نوشته‌ی نیمه‌کاره‌ی گفتگوی قبلی نباید بپرد.
+    saveDraft();
     state.activeId = id;
     state.stickToBottom = true;
     state.messages = [];
@@ -788,6 +955,7 @@
       renderMessages({ toBottom: true });
       renderConversations();
       markConversationRead();
+      loadDraft(id);
       $('messageInput').focus({ preventScroll: true });
     } catch (err) {
       toast(err.message, true);
@@ -897,6 +1065,8 @@
   $('messageInput').addEventListener('input', () => {
     autoGrow();
     sendTyping(true);
+    clearTimeout(saveDraft.timer);
+    saveDraft.timer = setTimeout(saveDraft, 400);
   });
 
   $('messageInput').addEventListener('keydown', (event) => {
@@ -904,6 +1074,11 @@
       event.preventDefault();
       $('composer').requestSubmit();
     }
+  });
+
+  window.addEventListener('beforeunload', saveDraft);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') saveDraft();
   });
 
   function sendTyping(isTyping) {
@@ -928,6 +1103,7 @@
       const target = state.editing;
       state.editing = null;
       input.value = '';
+      saveDraft();
       autoGrow();
       updateReplyBar();
       try {
@@ -946,6 +1122,7 @@
 
     const replyToId = state.replyTo?.id ?? null;
     input.value = '';
+    saveDraft();
     autoGrow();
     state.replyTo = null;
     updateReplyBar();
@@ -1162,6 +1339,7 @@
 
     const input = $('messageInput');
     input.value = '';
+    saveDraft();
     autoGrow();
     state.replyTo = null;
     updateReplyBar();
@@ -1282,6 +1460,15 @@
           renderMessages();
         }
         renderConversations();
+        break;
+      }
+
+      case 'message:reactions': {
+        const target = state.messages.find((m) => m.id === event.messageId);
+        if (target && event.conversationId === state.activeId) {
+          target.reactions = event.reactions;
+          renderMessages({ keepScroll: true });
+        }
         break;
       }
 
@@ -1455,6 +1642,7 @@
    */
   async function notify(conv, message) {
     if (document.visibilityState === 'visible') return;
+    if (conv.muted) return; // کاربر خودش خواسته این گفتگو ساکت باشد
     const body =
       message.kind === 'image'
         ? '🖼 عکس فرستاد'
@@ -2507,6 +2695,18 @@
     return wrap;
   }
 
+  /** تغییر سنجاق یا بی‌صدا برای یک گفتگو. */
+  async function setConversationFlag(conv, patch) {
+    try {
+      const data = await api(`/conversations/${conv.id}/flags`, { method: 'POST', body: patch });
+      upsertConversation(data.conversation);
+      if ('pinned' in patch) toast(patch.pinned ? 'سنجاق شد.' : 'سنجاق برداشته شد.');
+      else toast(patch.muted ? 'بی‌صدا شد.' : 'صدا روشن شد.');
+    } catch (err) {
+      toast(err.message, true);
+    }
+  }
+
   function chatInfoModal() {
     const conv = state.conversations.get(state.activeId);
     if (!conv) return;
@@ -2733,7 +2933,68 @@
   $('conversationSearch').addEventListener('input', (event) => {
     state.filter = event.target.value;
     renderConversations();
+    clearTimeout(state.searchTimer);
+    // جستجوی داخل پیام‌ها به سرور می‌رود، پس کمی صبر می‌کنیم.
+    state.searchTimer = setTimeout(searchInMessages, 350);
   });
+
+  /**
+   * جستجو در متن پیام‌ها. نتیجه زیر فهرست گفتگوها می‌نشیند و با کلیک، همان
+   * گفتگو باز و روی همان پیام اسکرول می‌شود.
+   */
+  async function searchInMessages() {
+    const query = state.filter.trim();
+    const box = $('messageHits');
+    if (query.length < 2) {
+      box.classList.add('is-hidden');
+      box.innerHTML = '';
+      return;
+    }
+    let messages = [];
+    try {
+      ({ messages } = await api(`/search?q=${encodeURIComponent(query)}`));
+    } catch {
+      return;
+    }
+    // ممکن است کاربر در این فاصله متن را عوض کرده باشد.
+    if (state.filter.trim() !== query) return;
+
+    box.innerHTML = '';
+    if (messages.length === 0) {
+      box.classList.add('is-hidden');
+      return;
+    }
+    const title = document.createElement('div');
+    title.className = 'hits-title';
+    title.textContent = `${fa(messages.length)} پیام پیدا شد`;
+    box.appendChild(title);
+
+    for (const message of messages) {
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'hit';
+      const where = document.createElement('small');
+      where.className = 'muted';
+      where.textContent =
+        message.conversationTitle ||
+        state.conversations.get(message.conversationId)?.title ||
+        'گفتگو';
+      const text = document.createElement('span');
+      text.textContent = message.kind === 'image' ? `🖼 ${message.body}` : message.body;
+      const when = document.createElement('small');
+      when.className = 'muted';
+      when.textContent = dayText(message.createdAt);
+      row.append(where, text, when);
+      row.addEventListener('click', async () => {
+        if (state.activeId !== message.conversationId) {
+          await openConversation(message.conversationId);
+        }
+        scrollToMessage(message.id);
+      });
+      box.appendChild(row);
+    }
+    box.classList.remove('is-hidden');
+  }
   $('messageList').addEventListener('scroll', () => {
     if ($('messageList').scrollTop < 60) loadOlderMessages();
     state.stickToBottom = atBottom();

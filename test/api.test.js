@@ -1038,3 +1038,150 @@ test('گروه: فقط سازنده نام و عکس را عوض می‌کند �
   });
   assert.equal(onDirect.status, 400);
 });
+
+/* ------------------ سنجاق، بی‌صدا، واکنش، جستجو، بازفرستادن ------------------ */
+
+/**
+ * این آزمون‌ها فیکسچر خودشان را می‌سازند: آزمون‌های بالاتر «سارا» را حذف
+ * می‌کنند، پس نه توکنش معتبر می‌ماند و نه گفتگویش.
+ */
+const chat = {};
+
+test('آماده‌سازی: دو کاربر و یک گفتگو برای آزمون‌های بعدی', async () => {
+  const store = require('../server/store.js');
+  for (const [username, displayName] of [['pin1', 'کاربر یک'], ['pin2', 'کاربر دو'], ['pin3', 'بیرونی']]) {
+    store.createUser({ username, displayName, password: 'secret1234', status: 'approved' });
+    const login = await call('/api/auth/login', {
+      method: 'POST', body: { username, password: 'secret1234' },
+    });
+    assert.equal(login.status, 200);
+    chat[`${username}Token`] = login.body.token;
+  }
+
+  const made = await call('/api/conversations/direct', {
+    method: 'POST', token: chat.pin1Token, body: { username: 'pin2' },
+  });
+  assert.equal(made.status, 201);
+  chat.conversationId = made.body.conversation.id;
+
+  const sent = await call(`/api/conversations/${chat.conversationId}/messages`, {
+    method: 'POST', token: chat.pin1Token, body: { body: 'سلام، این یک پیام آزمایشی است' },
+  });
+  assert.equal(sent.status, 201);
+  chat.messageId = sent.body.message.id;
+
+  const form = new FormData();
+  form.append('image', new Blob([pngBuffer(10, 10)], { type: 'image/png' }), 'p.png');
+  form.append('caption', 'نمودار آزمایشی');
+  const image = await fetch(`${base}/api/conversations/${chat.conversationId}/images`, {
+    method: 'POST', headers: { Authorization: `Bearer ${chat.pin1Token}` }, body: form,
+  });
+  assert.equal(image.status, 201);
+  chat.imageId = (await image.json()).message.id;
+});
+
+test('سنجاق و بی‌صدا فقط برای خود کاربر است', async () => {
+  const pinned = await call(`/api/conversations/${chat.conversationId}/flags`, {
+    method: 'POST', token: chat.pin1Token, body: { pinned: true, muted: true },
+  });
+  assert.equal(pinned.status, 200);
+  assert.equal(pinned.body.conversation.pinned, true);
+  assert.equal(pinned.body.conversation.muted, true);
+
+  // طرف مقابل نباید چیزی ببیند
+  const theirs = await call('/api/conversations', { token: chat.pin2Token });
+  const same = theirs.body.conversations.find((c) => c.id === chat.conversationId);
+  assert.equal(same.pinned, false, 'سنجاقِ یک نفر نباید به طرف مقابل سرایت کند');
+  assert.equal(same.muted, false);
+
+  // سنجاق‌شده باید بالای فهرست خودش باشد
+  const mine = await call('/api/conversations', { token: chat.pin1Token });
+  assert.equal(mine.body.conversations[0].id, chat.conversationId);
+
+  const off = await call(`/api/conversations/${chat.conversationId}/flags`, {
+    method: 'POST', token: chat.pin1Token, body: { pinned: false },
+  });
+  assert.equal(off.body.conversation.pinned, false);
+  assert.equal(off.body.conversation.muted, true, 'بی‌صدا نباید با برداشتن سنجاق عوض شود');
+});
+
+test('واکنش: فقط ایموجی‌های مجاز، و فقط برای عضو گفتگو', async () => {
+  const id = chat.messageId;
+
+  const bad = await call(`/api/messages/${id}/reactions`, {
+    method: 'POST', token: chat.pin2Token, body: { emoji: '<script>' },
+  });
+  assert.equal(bad.status, 400, 'ایموجی دلخواه نباید روی پیام دیگران ذخیره شود');
+
+  const outsider = await call(`/api/messages/${id}/reactions`, {
+    method: 'POST', token: chat.pin3Token, body: { emoji: '👍' },
+  });
+  assert.equal(outsider.status, 403);
+
+  const added = await call(`/api/messages/${id}/reactions`, {
+    method: 'POST', token: chat.pin2Token, body: { emoji: '👍' },
+  });
+  assert.equal(added.status, 200);
+  assert.deepEqual(added.body.reactions, [{ emoji: '👍', count: 1, mine: true }]);
+
+  // همان واکنش دوباره یعنی برداشتن
+  const removed = await call(`/api/messages/${id}/reactions`, {
+    method: 'POST', token: chat.pin2Token, body: { emoji: '👍' },
+  });
+  assert.deepEqual(removed.body.reactions, []);
+
+  // و در فهرست پیام‌ها هم می‌آید، با mine درستِ هر بیننده
+  await call(`/api/messages/${id}/reactions`, {
+    method: 'POST', token: chat.pin2Token, body: { emoji: '❤️' },
+  });
+  const listed = await call(`/api/conversations/${chat.conversationId}/messages`, {
+    token: chat.pin1Token,
+  });
+  const message = listed.body.messages.find((m) => m.id === id);
+  assert.deepEqual(message.reactions, [{ emoji: '❤️', count: 1, mine: false }]);
+});
+
+test('جستجو فقط در پیام‌های گفتگوهای خود کاربر می‌گردد', async () => {
+  const mine = await call('/api/search?q=' + encodeURIComponent('آزمایشی'), {
+    token: chat.pin1Token,
+  });
+  assert.equal(mine.status, 200);
+  assert.ok(mine.body.messages.length > 0);
+
+  const outsider = await call('/api/search?q=' + encodeURIComponent('آزمایشی'), {
+    token: chat.pin3Token,
+  });
+  assert.equal(outsider.body.messages.length, 0, 'جستجو نباید پیام گفتگوهای دیگران را بدهد');
+
+  // جستجوی خیلی کوتاه عملاً یعنی همه‌چیز
+  const tooShort = await call('/api/search?q=%D8%B3', { token: chat.pin1Token });
+  assert.deepEqual(tooShort.body.messages, []);
+});
+
+test('بازفرستادن پیام فقط بین گفتگوهای خود کاربر', async () => {
+  const store = require('../server/store.js');
+  const target = await call('/api/conversations/direct', {
+    method: 'POST', token: chat.pin1Token, body: { username: 'pin3' },
+  });
+  const targetId = target.body.conversation.id;
+
+  const forwarded = await call(`/api/conversations/${targetId}/forward`, {
+    method: 'POST', token: chat.pin1Token, body: { messageId: chat.messageId },
+  });
+  assert.equal(forwarded.status, 201);
+  assert.equal(forwarded.body.message.forwarded, true);
+  assert.equal(forwarded.body.message.conversationId, targetId);
+
+  // «بیرونی» عضو گفتگوی مبدأ نیست و نباید بتواند پیامش را بیرون بکشد
+  const stolen = await call(`/api/conversations/${targetId}/forward`, {
+    method: 'POST', token: chat.pin3Token, body: { messageId: chat.messageId },
+  });
+  assert.equal(stolen.status, 403);
+
+  // عکس با فایلش بازفرستاده می‌شود
+  const image = await call(`/api/conversations/${targetId}/forward`, {
+    method: 'POST', token: chat.pin1Token, body: { messageId: chat.imageId },
+  });
+  assert.equal(image.status, 201);
+  assert.ok(fs.existsSync(store.filePathFor(image.body.message.id)), 'فایل عکس هم باید کپی می‌شد');
+});

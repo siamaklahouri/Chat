@@ -293,6 +293,105 @@ router.get('/avatars/:id', fileAuth, (req, res) => {
   fs.createReadStream(filePath).pipe(res);
 });
 
+/* --------------------- سنجاق، بی‌صدا، جستجو، ری‌اکشن --------------------- */
+
+/** سنجاق و بی‌صدا فقط برای خود کاربر است؛ طرف مقابل خبردار نمی‌شود. */
+router.post('/conversations/:id/flags', requireApproved, memberGuard, (req, res) => {
+  const patch = {};
+  if ('pinned' in req.body) patch.pinned = Boolean(req.body.pinned);
+  if ('muted' in req.body) patch.muted = Boolean(req.body.muted);
+  if (Object.keys(patch).length === 0) return fail(res, 400, 'چیزی برای تغییر داده نشد.');
+
+  const view = store.setConversationFlags(req.conversationId, req.user.id, patch);
+  return res.json({ conversation: decorateConversation(view) });
+});
+
+/** جستجو در پیام‌های همین کاربر. */
+router.get(
+  '/search',
+  requireApproved,
+  rateLimit({ windowMs: 60_000, max: 60, scope: 'search', by: 'user' }),
+  (req, res) => {
+    const query = clean(req.query.q).slice(0, 100);
+    // جستجوی یک‌حرفی عملاً یعنی «همه‌ی پیام‌ها»؛ هم بی‌فایده است هم سنگین.
+    if (query.length < 2) return res.json({ messages: [] });
+    return res.json({ messages: store.searchMessages(req.user.id, query) });
+  }
+);
+
+// مجموعه‌ی بسته‌ی ری‌اکشن‌ها: هر چیزی را نمی‌شود ذخیره کرد، وگرنه این مسیر
+// تبدیل می‌شد به جای ذخیره‌ی متن دلخواه روی پیام دیگران.
+const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏', '🔥', '👏'];
+
+router.post('/messages/:id/reactions', requireApproved, (req, res) => {
+  const row = store.rawMessage(Number(req.params.id));
+  if (!row || row.deleted_at) return fail(res, 404, 'پیام پیدا نشد.');
+  if (!store.isMember(row.conversation_id, req.user.id)) return fail(res, 403, 'دسترسی ندارید.');
+
+  const emoji = String(req.body.emoji || '');
+  if (!REACTIONS.includes(emoji)) return fail(res, 400, 'این واکنش پشتیبانی نمی‌شود.');
+
+  store.toggleReaction(row.id, req.user.id, emoji);
+  // هر کس باید بداند کدام واکنش‌ها مال خودش است، پس شمارش برای هر عضو جدا می‌رود.
+  for (const memberId of store.memberIdsOf(row.conversation_id)) {
+    hub.sendToUser(memberId, {
+      type: 'message:reactions',
+      messageId: row.id,
+      conversationId: row.conversation_id,
+      reactions: store.reactionsFor([row.id], memberId)[row.id] || [],
+    });
+  }
+  return res.json({ reactions: store.reactionsFor([row.id], req.user.id)[row.id] || [] });
+});
+
+/** بازفرستادن یک پیام به گفتگوی دیگر. */
+router.post(
+  '/conversations/:id/forward',
+  requireApproved,
+  rateLimit({ windowMs: 60_000, max: 30, scope: 'forward', by: 'user' }),
+  memberGuard,
+  (req, res) => {
+    const row = store.rawMessage(Number(req.body.messageId));
+    if (!row || row.deleted_at) return fail(res, 404, 'پیام پیدا نشد.');
+    // باید عضو هر دو سر کار باشد، وگرنه می‌شد پیام گفتگویی را بیرون کشید.
+    if (!store.isMember(row.conversation_id, req.user.id)) return fail(res, 403, 'دسترسی ندارید.');
+    if (row.kind === 'system' || row.kind === 'call') return fail(res, 400, 'این پیام بازفرستادنی نیست.');
+
+    const message = store.createMessage({
+      conversationId: req.conversationId,
+      senderId: req.user.id,
+      kind: row.kind,
+      body: row.body,
+      forwarded: true,
+      file:
+        row.kind === 'text'
+          ? null
+          : {
+              name: row.file_name,
+              mime: row.file_mime,
+              size: row.file_size,
+              width: row.image_width,
+              height: row.image_height,
+              durationMs: row.duration_ms,
+            },
+    });
+
+    if (row.kind !== 'text') {
+      try {
+        fs.copyFileSync(store.filePathFor(row.id), store.filePathFor(message.id));
+      } catch (err) {
+        store.deleteMessage(message.id);
+        console.error('[forward] کپی فایل ناموفق بود:', err);
+        return fail(res, 500, 'بازفرستادن ناموفق بود.');
+      }
+    }
+
+    store.markRead(req.conversationId, req.user.id, message.id);
+    hub.sendToConversation(req.conversationId, { type: 'message:new', message });
+    return res.status(201).json({ message });
+  }
+);
+
 /* ------------------------------ تماس صوتی ------------------------------ */
 
 /**
@@ -397,7 +496,10 @@ router.get('/conversations/:id/messages', requireApproved, memberGuard, (req, re
     limit,
     viewerId: req.user.id,
   });
-  res.json({ messages, hasMore: messages.length === limit });
+  res.json({
+    messages: store.withReactions(messages, req.user.id),
+    hasMore: messages.length === limit,
+  });
 });
 
 function resolveReplyTo(value, conversationId) {

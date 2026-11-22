@@ -51,6 +51,7 @@ const publicMessage = (row) => ({
   attachment: attachmentOf(row),
   // برای پیام صوتی داخل attachment هم هست؛ برای رکورد تماس اینجا لازم است.
   durationMs: row.deleted_at ? null : row.duration_ms,
+  forwarded: Boolean(row.forwarded),
   replyToId: row.reply_to_id,
   createdAt: row.created_at,
   editedAt: row.edited_at,
@@ -222,9 +223,29 @@ const membersOf = (conversationId) =>
 const memberView = (conversationId, userId) =>
   db
     .prepare(
-      'SELECT last_read_message_id, cleared_up_to_id, hidden FROM members WHERE conversation_id = ? AND user_id = ?'
+      `SELECT last_read_message_id, cleared_up_to_id, hidden, pinned_at, muted
+       FROM members WHERE conversation_id = ? AND user_id = ?`
     )
-    .get(conversationId, userId) || { last_read_message_id: 0, cleared_up_to_id: 0, hidden: 0 };
+    .get(conversationId, userId) || {
+    last_read_message_id: 0,
+    cleared_up_to_id: 0,
+    hidden: 0,
+    pinned_at: null,
+    muted: 0,
+  };
+
+/** سنجاق و بی‌صدا هر کدام فقط برای همان کاربر است، نه برای طرف مقابل. */
+function setConversationFlags(conversationId, userId, { pinned, muted }) {
+  if (pinned !== undefined) {
+    db.prepare('UPDATE members SET pinned_at = ? WHERE conversation_id = ? AND user_id = ?')
+      .run(pinned ? Date.now() : null, conversationId, userId);
+  }
+  if (muted !== undefined) {
+    db.prepare('UPDATE members SET muted = ? WHERE conversation_id = ? AND user_id = ?')
+      .run(muted ? 1 : 0, conversationId, userId);
+  }
+  return conversationView(conversationId, userId);
+}
 
 /**
  * «حذف گفتگو» فقط برای همین کاربر: پیام‌های تا این لحظه از دید او پنهان می‌شوند و
@@ -298,6 +319,8 @@ function conversationView(conversationId, viewerId) {
     unread,
     lastReadMessageId: lastReadId,
     clearedUpToId: cleared,
+    pinned: Boolean(view.pinned_at),
+    muted: Boolean(view.muted),
   };
 }
 
@@ -309,7 +332,8 @@ function listConversations(viewerId) {
        LEFT JOIN (SELECT conversation_id, MAX(id) AS last_id FROM messages GROUP BY conversation_id) lm
          ON lm.conversation_id = c.id
        WHERE m.hidden = 0 OR COALESCE(lm.last_id, 0) > m.cleared_up_to_id
-       ORDER BY COALESCE(lm.last_id, 0) DESC, c.id DESC`
+       ORDER BY (m.pinned_at IS NULL), m.pinned_at DESC,
+                COALESCE(lm.last_id, 0) DESC, c.id DESC`
     )
     .all(viewerId)
     .map((r) => conversationView(r.id, viewerId));
@@ -351,13 +375,14 @@ function createMessage({
   replyToId = null,
   kind = 'text',
   file = null,
+  forwarded = false,
 }) {
   const info = db
     .prepare(
       `INSERT INTO messages
          (conversation_id, sender_id, kind, body, file_name, file_mime, file_size,
-          image_width, image_height, duration_ms, reply_to_id, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          image_width, image_height, duration_ms, forwarded, reply_to_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       conversationId,
@@ -370,6 +395,7 @@ function createMessage({
       file?.width ?? null,
       file?.height ?? null,
       file?.durationMs ?? null,
+      forwarded ? 1 : 0,
       replyToId,
       Date.now()
     );
@@ -433,6 +459,80 @@ function removeUserAvatar(userId) {
 
 function removeFileOf(messageId) {
   fs.rmSync(filePathFor(messageId), { force: true });
+}
+
+/* ------------------------------ ری‌اکشن ------------------------------ */
+
+/** ری‌اکشن‌های یک دسته پیام: { messageId: [{ emoji, count, mine }] } */
+function reactionsFor(messageIds, viewerId) {
+  if (messageIds.length === 0) return {};
+  const marks = messageIds.map(() => '?').join(',');
+  const rows = db
+    .prepare(
+      `SELECT message_id, emoji, COUNT(*) AS count,
+              SUM(CASE WHEN user_id = ? THEN 1 ELSE 0 END) AS mine
+       FROM reactions WHERE message_id IN (${marks})
+       GROUP BY message_id, emoji ORDER BY count DESC, emoji`
+    )
+    .all(viewerId, ...messageIds);
+
+  const out = {};
+  for (const row of rows) {
+    (out[row.message_id] ||= []).push({
+      emoji: row.emoji,
+      count: row.count,
+      mine: row.mine > 0,
+    });
+  }
+  return out;
+}
+
+/** زدن یا برداشتن ری‌اکشن. برمی‌گرداند که الان زده شده یا نه. */
+function toggleReaction(messageId, userId, emoji) {
+  const existing = db
+    .prepare('SELECT 1 FROM reactions WHERE message_id = ? AND user_id = ? AND emoji = ?')
+    .get(messageId, userId, emoji);
+  if (existing) {
+    db.prepare('DELETE FROM reactions WHERE message_id = ? AND user_id = ? AND emoji = ?')
+      .run(messageId, userId, emoji);
+    return false;
+  }
+  db.prepare(
+    'INSERT INTO reactions (message_id, user_id, emoji, created_at) VALUES (?, ?, ?, ?)'
+  ).run(messageId, userId, emoji, Date.now());
+  return true;
+}
+
+/* ------------------------- جستجو در پیام‌ها ------------------------- */
+
+/**
+ * جستجوی متنی در پیام‌های همین کاربر. فقط گفتگوهایی که عضوشان است، و فقط
+ * پیام‌هایی که برای خودش پاک نکرده.
+ */
+function searchMessages(viewerId, query, limit = 40) {
+  const like = `%${query.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+  return db
+    .prepare(
+      `SELECT m.*, c.type AS conv_type, c.title AS conv_title
+       FROM messages m
+       JOIN members mem ON mem.conversation_id = m.conversation_id AND mem.user_id = ?
+       JOIN conversations c ON c.id = m.conversation_id
+       WHERE m.deleted_at IS NULL AND m.kind IN ('text', 'image')
+         AND m.id > mem.cleared_up_to_id
+         AND m.body LIKE ? ESCAPE '\\'
+       ORDER BY m.id DESC LIMIT ?`
+    )
+    .all(viewerId, like, limit)
+    .map((row) => ({
+      ...publicMessage(row),
+      conversationTitle: row.conv_type === 'group' ? row.conv_title : null,
+    }));
+}
+
+/** ری‌اکشن‌ها را به پیام‌ها می‌چسباند (یک پرس‌وجو برای کل دسته). */
+function withReactions(messages, viewerId) {
+  const map = reactionsFor(messages.map((m) => m.id), viewerId);
+  return messages.map((m) => ({ ...m, reactions: map[m.id] || [] }));
 }
 
 function markRead(conversationId, userId, messageId) {
@@ -513,6 +613,11 @@ module.exports = {
   renameGroup,
   removeFileOf,
   markRead,
+  setConversationFlags,
+  reactionsFor,
+  withReactions,
+  toggleReaction,
+  searchMessages,
   peerIdsOf,
   stats,
 };
