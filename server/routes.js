@@ -343,6 +343,86 @@ router.get('/avatars/:id', fileAuth, (req, res) => {
   fs.createReadStream(filePath).pipe(res);
 });
 
+/* ------------------------------- استوری ------------------------------- */
+
+/**
+ * استوری: عکسی که ۲۴ ساعت می‌ماند و بعد خودش می‌رود.
+ *
+ * فقط کسانی می‌بینندش که دست‌کم یک گفتگوی مشترک با فرستنده دارند — همان
+ * قاعده‌ای که برای پیدا کردن کاربر و دیدن عکس پروفایل داریم.
+ */
+router.get('/stories', requireApproved, (req, res) => {
+  res.json({ stories: store.listStoriesFor(req.user.id) });
+});
+
+router.post(
+  '/stories',
+  requireApproved,
+  rateLimit({ windowMs: 60 * 60_000, max: 20, scope: 'story', by: 'user', message: 'تعداد استوری زیاد است.' }),
+  uploadAvatar.single('image'),
+  (req, res) => {
+    if (!req.file) return fail(res, 400, 'فایلی دریافت نشد.');
+    const info = sniff(req.file.buffer);
+    if (!info) return fail(res, 400, 'فقط عکس (JPEG، PNG، GIF یا WebP) پذیرفته می‌شود.');
+
+    let story;
+    try {
+      story = store.createStory(req.user.id, clean(req.body.caption).slice(0, 200), req.file.buffer);
+    } catch (err) {
+      console.error('[story] ذخیره ناموفق بود:', err);
+      return fail(res, 500, 'ذخیره استوری ناموفق بود.');
+    }
+
+    // کسانی که گفتگوی مشترک دارند بدانند استوری تازه‌ای هست.
+    hub.sendToUsers(store.peerIdsOf(req.user.id), { type: 'story:new', userId: req.user.id });
+    return res.status(201).json({ stories: store.listStoriesFor(req.user.id) });
+  }
+);
+
+/** آیا این کاربر حق دیدن این استوری را دارد؟ */
+function canSeeStory(story, viewerId) {
+  if (!story || story.expires_at <= Date.now()) return false;
+  if (story.user_id === viewerId) return true;
+  if (store.blockedBetween(story.user_id, viewerId)) return false;
+  return store.peerIdsOf(viewerId).includes(story.user_id);
+}
+
+router.get('/stories/:id/file', fileAuth, (req, res) => {
+  const story = store.getStory(Number(req.params.id));
+  // نبودِ استوری و نداشتن دسترسی هر دو ۴۰۴ یکسان می‌گیرند.
+  if (!canSeeStory(story, req.user.id)) return fail(res, 404, 'استوری پیدا نشد.');
+
+  const filePath = store.storyPathFor(story.id);
+  if (!fs.existsSync(filePath)) return fail(res, 404, 'استوری پیدا نشد.');
+
+  res.type('image/jpeg');
+  res.setHeader('Cache-Control', 'private, max-age=3600');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+  return fs.createReadStream(filePath).pipe(res);
+});
+
+router.post('/stories/:id/seen', requireApproved, (req, res) => {
+  const story = store.getStory(Number(req.params.id));
+  if (!canSeeStory(story, req.user.id)) return fail(res, 404, 'استوری پیدا نشد.');
+  if (story.user_id !== req.user.id) store.markStorySeen(story.id, req.user.id);
+  return res.json({ ok: true });
+});
+
+/** بیننده‌های استوری — فقط صاحبش می‌بیند. */
+router.get('/stories/:id/viewers', requireApproved, (req, res) => {
+  const story = store.getStory(Number(req.params.id));
+  if (!story || story.user_id !== req.user.id) return fail(res, 404, 'استوری پیدا نشد.');
+  return res.json({ users: store.storyViewers(story.id) });
+});
+
+router.delete('/stories/:id', requireApproved, (req, res) => {
+  const story = store.getStory(Number(req.params.id));
+  if (!story || story.user_id !== req.user.id) return fail(res, 404, 'استوری پیدا نشد.');
+  store.deleteStory(story.id);
+  return res.json({ stories: store.listStoriesFor(req.user.id) });
+});
+
 /* ----------------------- دستگاه‌ها و بلاک کردن ----------------------- */
 
 /** دستگاه‌هایی که با این حساب وارد شده‌اند. توکنشان هیچ‌وقت برنمی‌گردد. */

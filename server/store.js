@@ -543,6 +543,120 @@ function removeFileOf(messageId) {
   fs.rmSync(filePathFor(messageId), { force: true });
 }
 
+/* ------------------------------- استوری ------------------------------- */
+
+/**
+ * استوری پس از ۲۴ ساعت خودش می‌رود.
+ *
+ * برخلاف پیام‌ها که فقط دستی پاک می‌شوند، استوری ذاتاً موقت است — کاربر با
+ * همین انتظار می‌گذاردش.
+ */
+const STORY_TTL_MS = 24 * 60 * 60 * 1000;
+
+const storyPathFor = (id) => path.join(UPLOAD_DIR, `story-${id}`);
+
+function createStory(userId, caption, buffer) {
+  const now = Date.now();
+  const info = db
+    .prepare('INSERT INTO stories (user_id, caption, created_at, expires_at) VALUES (?, ?, ?, ?)')
+    .run(userId, caption, now, now + STORY_TTL_MS);
+  const id = Number(info.lastInsertRowid);
+  try {
+    fs.writeFileSync(storyPathFor(id), buffer);
+  } catch (error) {
+    db.prepare('DELETE FROM stories WHERE id = ?').run(id);
+    throw error;
+  }
+  return getStory(id);
+}
+
+const getStory = (id) => db.prepare('SELECT * FROM stories WHERE id = ?').get(id) || null;
+
+function deleteStory(id) {
+  fs.rmSync(storyPathFor(id), { force: true });
+  db.prepare('DELETE FROM stories WHERE id = ?').run(id);
+}
+
+/** استوری‌های منقضی را با فایلشان برمی‌دارد. */
+function sweepStories() {
+  const rows = db.prepare('SELECT id FROM stories WHERE expires_at <= ?').all(Date.now());
+  for (const row of rows) deleteStory(row.id);
+  return rows.length;
+}
+
+/**
+ * استوری‌هایی که این کاربر حق دیدنشان را دارد: مال خودش، و مال کسانی که
+ * دست‌کم یک گفتگوی مشترک با او دارند — همان قاعده‌ی بقیه‌ی برنامه.
+ */
+function listStoriesFor(viewerId) {
+  sweepStories();
+  const allowed = new Set([viewerId, ...peerIdsOf(viewerId)]);
+  const blocked = new Set(
+    db.prepare('SELECT blocked_id AS id FROM blocks WHERE blocker_id = ?').all(viewerId).map((r) => r.id)
+  );
+  const hidesMe = new Set(
+    db.prepare('SELECT blocker_id AS id FROM blocks WHERE blocked_id = ?').all(viewerId).map((r) => r.id)
+  );
+
+  const rows = db
+    .prepare(
+      `SELECT s.*, u.username, u.display_name, u.avatar_color, u.avatar_at,
+              (SELECT 1 FROM story_views v WHERE v.story_id = s.id AND v.user_id = ?) AS seen
+       FROM stories s JOIN users u ON u.id = s.user_id
+       WHERE s.expires_at > ? ORDER BY s.user_id, s.id`
+    )
+    .all(viewerId, Date.now());
+
+  const groups = new Map();
+  for (const row of rows) {
+    if (!allowed.has(row.user_id)) continue;
+    if (blocked.has(row.user_id) || hidesMe.has(row.user_id)) continue;
+    if (!groups.has(row.user_id)) {
+      groups.set(row.user_id, {
+        user: publicUser({
+          id: row.user_id,
+          username: row.username,
+          display_name: row.display_name,
+          avatar_color: row.avatar_color,
+          avatar_at: row.avatar_at,
+        }),
+        mine: row.user_id === viewerId,
+        items: [],
+      });
+    }
+    groups.get(row.user_id).items.push({
+      id: row.id,
+      url: `/api/stories/${row.id}/file`,
+      caption: row.caption,
+      createdAt: row.created_at,
+      expiresAt: row.expires_at,
+      seen: Boolean(row.seen),
+    });
+  }
+
+  // خودم اول، بعد آن‌هایی که ندیده‌ام، بعد بقیه.
+  return [...groups.values()]
+    .map((group) => ({ ...group, allSeen: group.items.every((i) => i.seen) }))
+    .sort((a, b) => Number(b.mine) - Number(a.mine) || Number(a.allSeen) - Number(b.allSeen));
+}
+
+function markStorySeen(storyId, userId) {
+  db.prepare(
+    'INSERT OR IGNORE INTO story_views (story_id, user_id, seen_at) VALUES (?, ?, ?)'
+  ).run(storyId, userId, Date.now());
+}
+
+/** چه کسانی استوری مرا دیده‌اند. */
+function storyViewers(storyId) {
+  return db
+    .prepare(
+      `SELECT u.* FROM story_views v JOIN users u ON u.id = v.user_id
+       WHERE v.story_id = ? ORDER BY v.seen_at DESC`
+    )
+    .all(storyId)
+    .map(publicUser);
+}
+
 /* -------------------------------- بلاک -------------------------------- */
 
 /**
@@ -736,6 +850,15 @@ module.exports = {
   removeFileOf,
   markRead,
   setConversationFlags,
+  STORY_TTL_MS,
+  storyPathFor,
+  createStory,
+  getStory,
+  deleteStory,
+  sweepStories,
+  listStoriesFor,
+  markStorySeen,
+  storyViewers,
   blockUser,
   unblockUser,
   hasBlocked,

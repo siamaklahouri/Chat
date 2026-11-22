@@ -65,6 +65,17 @@ const RETENTION_NOTICE =
 // بی‌دلیل روی دیسک نگه نداریم.
 sweepIncoming();
 
+// استوری‌های منقضی: یک بار در آغاز و بعد هر ساعت.
+const storySweeper = setInterval(() => {
+  try {
+    store.sweepStories();
+  } catch (error) {
+    console.error('[story] پاکسازی منقضی‌ها ناموفق بود:', error.message);
+  }
+}, 60 * 60_000);
+storySweeper.unref?.();
+store.sweepStories();
+
 const app = express();
 app.disable('x-powered-by');
 // فقط به یک پراکسی (nginx روی همین ماشین) اعتماد می‌شود. با `true` هر کلاینتی

@@ -65,6 +65,14 @@ function wipeMessages(reason = 'scheduled') {
     }
   }
   removedFiles += sweepIncoming(0);
+  // استوری هم عکس است و با پاکسازی می‌رود.
+  for (const entry of fs.readdirSync(UPLOAD_DIR, { withFileTypes: true })) {
+    if (entry.isFile() && entry.name.startsWith('story-')) {
+      fs.rmSync(`${UPLOAD_DIR}/${entry.name}`, { force: true });
+      removedFiles += 1;
+    }
+  }
+  db.exec('DELETE FROM stories');
 
   const now = Date.now();
   setMeta('last_wipe_at', now);

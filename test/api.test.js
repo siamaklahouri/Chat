@@ -1637,3 +1637,133 @@ test('نسخه‌ی اپ اندروید از نام فایل درست خواند
     assert.match(info.body.version, /^[0-9][0-9.]*$/, 'نسخه باید از نام فایل درآمده باشد');
   }
 });
+
+/* -------------------------------- استوری -------------------------------- */
+
+/**
+ * کاربرهای این بخش تازه ساخته می‌شوند: کاربرهای بالای فایل تا اینجا حذف یا از
+ * نشست خارج شده‌اند. ساخت از راه store است نه HTTP، چون سقفِ ثبت‌نامِ هر
+ * دستگاه را آزمون‌های بالاتر پر کرده‌اند — و همان سقف خودش جداگانه آزموده شده.
+ */
+function freshUser(username, displayName) {
+  const store = require('../server/store.js');
+  const { createSession } = require('../server/auth.js');
+  const user = store.createUser({
+    username, displayName, password: 'secret1234', status: 'approved',
+  });
+  return { id: user.id, token: createSession(user.id).token };
+}
+
+test('استوری: گذاشتن، دیده شدن فقط توسط مخاطب‌ها، بیننده‌ها و حذف', async () => {
+  const post = async (token, caption, buffer = pngBuffer(40, 60)) => {
+    const form = new FormData();
+    form.append('image', new Blob([buffer], { type: 'image/png' }), 's.png');
+    if (caption !== undefined) form.append('caption', caption);
+    const res = await fetch(`${base}/api/stories`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: form,
+    });
+    return { status: res.status, body: await res.json().catch(() => ({})) };
+  };
+
+  const nina = freshUser('nina', 'نینا رستمی');
+  const kaveh = freshUser('kaveh', 'کاوه نوری');
+  const stranger = freshUser('shahab', 'شهاب بیرونی');
+  // نینا و کاوه یک گفتگوی مشترک دارند؛ شهاب با هیچ‌کس.
+  const chat = await call('/api/conversations/direct', {
+    method: 'POST', token: kaveh.token, body: { username: 'nina' },
+  });
+  assert.equal(chat.status, 201);
+
+  const added = await post(nina.token, 'عصر بخیر');
+  assert.equal(added.status, 201);
+
+  // سارا خودش استوری خودش را در صدر فهرست می‌بیند
+  const mine = added.body.stories;
+  assert.equal(mine[0].user.username, 'nina');
+  assert.equal(mine[0].mine, true);
+  assert.equal(mine[0].items.length, 1);
+  assert.equal(mine[0].items[0].caption, 'عصر بخیر');
+  const storyId = mine[0].items[0].id;
+
+  // مدیر که با سارا گفتگو دارد می‌بیند
+  const adminSees = await call('/api/stories', { token: kaveh.token });
+  assert.equal(adminSees.status, 200);
+  const fromSara = adminSees.body.stories.find((g) => g.user.username === 'nina');
+  assert.ok(fromSara, 'مخاطب باید استوری را ببیند');
+  assert.equal(fromSara.allSeen, false);
+
+  // علی که هیچ گفتگوی مشترکی ندارد نمی‌بیند — نه در فهرست، نه مستقیم
+  const strangerSees = await call('/api/stories', { token: stranger.token });
+  assert.equal(strangerSees.body.stories.some((g) => g.user.username === 'nina'), false);
+  const strangerFileToken = (await call('/api/me', { token: stranger.token })).body.fileToken;
+  const stolen = await fetch(
+    `${base}/api/stories/${storyId}/file?t=${encodeURIComponent(strangerFileToken)}`
+  );
+  assert.equal(stolen.status, 404, 'غریبه نباید به فایل استوری برسد');
+  const strangerSeen = await call(`/api/stories/${storyId}/seen`, {
+    method: 'POST', token: stranger.token,
+  });
+  assert.equal(strangerSeen.status, 404);
+
+  // عکس برای مخاطب باز می‌شود، با هدرهای ضدسوءاستفاده
+  const kavehFileToken = (await call('/api/me', { token: kaveh.token })).body.fileToken;
+  const file = await fetch(
+    `${base}/api/stories/${storyId}/file?t=${encodeURIComponent(kavehFileToken)}`
+  );
+  assert.equal(file.status, 200);
+  assert.equal(file.headers.get('x-content-type-options'), 'nosniff');
+  assert.ok((await file.arrayBuffer()).byteLength > 0);
+
+  // فهرست بیننده‌ها فقط برای صاحب استوری
+  assert.equal((await call(`/api/stories/${storyId}/viewers`, { token: kaveh.token })).status, 404);
+  const emptyViewers = await call(`/api/stories/${storyId}/viewers`, { token: nina.token });
+  assert.deepEqual(emptyViewers.body.users, []);
+
+  const marked = await call(`/api/stories/${storyId}/seen`, {
+    method: 'POST', token: kaveh.token,
+  });
+  assert.equal(marked.status, 200);
+  const viewers = await call(`/api/stories/${storyId}/viewers`, { token: nina.token });
+  assert.equal(viewers.body.users.length, 1);
+  assert.equal(viewers.body.users[0].username, 'kaveh');
+
+  // بعد از دیدن، دیگر «ندیده» علامت نمی‌خورد
+  const again = await call('/api/stories', { token: kaveh.token });
+  assert.equal(again.body.stories.find((g) => g.user.username === 'nina').allSeen, true);
+
+  // فایلی که عکس نیست رد می‌شود
+  const fake = await post(nina.token, '', Buffer.from('<?php echo 1; ?>'));
+  assert.equal(fake.status, 400);
+
+  // حذف فقط به دست صاحبش
+  assert.equal((await call(`/api/stories/${storyId}`, { method: 'DELETE', token: kaveh.token })).status, 404);
+  const removed = await call(`/api/stories/${storyId}`, { method: 'DELETE', token: nina.token });
+  assert.equal(removed.status, 200);
+  assert.equal(removed.body.stories.some((g) => g.user.username === 'nina'), false);
+
+  const store = require('../server/store.js');
+  assert.equal(fs.existsSync(store.storyPathFor(storyId)), false, 'فایل استوری هم باید رفته باشد');
+});
+
+test('استوری: بعد از ۲۴ ساعت از فهرست و دیسک می‌رود', async () => {
+  const store = require('../server/store.js');
+  const owner = freshUser('parva', 'پروا');
+  const story = store.createStory(owner.id, 'کهنه', pngBuffer(30, 40));
+  assert.ok(fs.existsSync(store.storyPathFor(story.id)));
+
+  // عقب‌بردن تاریخ انقضا، به جای صبر کردن
+  const { db } = require('../server/db.js');
+  db.prepare('UPDATE stories SET expires_at = ? WHERE id = ?').run(Date.now() - 1000, story.id);
+
+  assert.equal(
+    store.listStoriesFor(owner.id).some((g) => g.items.some((i) => i.id === story.id)),
+    false,
+    'استوری منقضی نباید در فهرست بیاید'
+  );
+
+  store.sweepStories();
+  assert.equal(fs.existsSync(store.storyPathFor(story.id)), false);
+  assert.equal(store.getStory(story.id), null);
+});

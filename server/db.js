@@ -113,6 +113,23 @@ for (const [table, column, definition] of [
  * می‌شود تا اگر وسط کار چیزی خطا داد، داده‌ها دست‌نخورده بمانند.
  */
 db.exec(`
+  CREATE TABLE IF NOT EXISTS stories (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    caption    TEXT NOT NULL DEFAULT '',
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_stories_user ON stories(user_id, id);
+  CREATE INDEX IF NOT EXISTS idx_stories_expiry ON stories(expires_at);
+
+  CREATE TABLE IF NOT EXISTS story_views (
+    story_id INTEGER NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+    user_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    seen_at  INTEGER NOT NULL,
+    PRIMARY KEY (story_id, user_id)
+  );
+
   CREATE TABLE IF NOT EXISTS admin_log (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     actor_id   INTEGER REFERENCES users(id) ON DELETE SET NULL,
