@@ -118,6 +118,10 @@
      می‌گذارند؛ CSS بقیه‌ی توکن‌ها را از همان‌ها می‌سازد. */
   const ACCENT_KEY = 'messenger.accent';
   const WALL_KEY = 'messenger.wall';
+  const WALL_IMAGE_KEY = 'messenger.wallImage';
+  /* عکس دلخواه فقط روی همین دستگاه می‌ماند و هیچ‌وقت به سرور نمی‌رود. */
+  const WALL_IMAGE_EDGE = 1280;
+  const WALL_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
 
   const ACCENTS = [
     ['indigo', 'بنفش‌آبی'],
@@ -145,14 +149,55 @@
   const storedAccent = () => localStorage.getItem(ACCENT_KEY) || DEFAULT_ACCENT;
   const storedWall = () => localStorage.getItem(WALL_KEY) || DEFAULT_WALL;
 
+
   function applyAccent(name) {
     document.documentElement.dataset.accent =
       ACCENTS.some(([id]) => id === name) ? name : DEFAULT_ACCENT;
   }
 
+  const wallImage = () => {
+    try {
+      return localStorage.getItem(WALL_IMAGE_KEY);
+    } catch {
+      return null;
+    }
+  };
+
   function applyWall(name) {
-    document.documentElement.dataset.wall =
-      WALLS.some(([id]) => id === name) ? name : DEFAULT_WALL;
+    const root = document.documentElement;
+    if (name === 'custom') {
+      const image = wallImage();
+      // عکس پاک شده ولی انتخاب مانده: به پیش‌فرض برمی‌گردیم تا تخت نماند.
+      if (!image) return applyWall(DEFAULT_WALL);
+      root.style.setProperty('--wall-custom', `url("${image}")`);
+      root.dataset.wall = 'custom';
+      return;
+    }
+    root.style.removeProperty('--wall-custom');
+    root.dataset.wall = WALLS.some(([id]) => id === name) ? name : DEFAULT_WALL;
+  }
+
+  /**
+   * عکس گالری را برای پس‌زمینه آماده می‌کند: بلندترین ضلع تا ۱۲۸۰ کوچک
+   * می‌شود و خروجی JPEG است، چون باید در localStorage همین مرورگر جا شود.
+   */
+  async function prepareWallImage(file) {
+    const bitmap = await createImageBitmap(file).catch(() => null);
+    if (!bitmap) throw new Error('این فایل عکس نیست.');
+
+    const scale = Math.min(1, WALL_IMAGE_EDGE / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close?.();
+
+    // کیفیت پایین می‌آید تا در سهمیه‌ی مرورگر جا شود؛ نه بی‌نهایت.
+    for (const quality of [0.72, 0.6, 0.45]) {
+      const url = canvas.toDataURL('image/jpeg', quality);
+      if (url.length <= WALL_IMAGE_MAX_BYTES) return url;
+    }
+    throw new Error('این عکس خیلی بزرگ است؛ عکس کوچک‌تری انتخاب کنید.');
   }
 
   /**
@@ -229,6 +274,86 @@
         });
         wallRow.appendChild(button);
       }
+
+      // ---- عکس دلخواه از گالری
+      const pick = document.createElement('button');
+      pick.type = 'button';
+      pick.className = 'wall-chip wall-pick';
+      pick.dataset.wall = 'custom';
+      pick.title = 'عکس از گالری';
+      pick.setAttribute('aria-label', 'انتخاب عکس پس‌زمینه از گالری');
+
+      const file = document.createElement('input');
+      file.type = 'file';
+      file.accept = 'image/*';
+      file.className = 'is-hidden';
+
+      const drawPick = () => {
+        const image = wallImage();
+        pick.style.backgroundImage = image ? `url("${image}")` : '';
+        pick.classList.toggle('has-image', Boolean(image));
+        pick.textContent = image ? '' : '＋';
+        pick.classList.toggle('is-active', storedWall() === 'custom' && Boolean(image));
+      };
+
+      const markActive = (node) => {
+        for (const sibling of wallRow.children) sibling.classList.remove('is-active');
+        node.classList.add('is-active');
+      };
+
+      pick.addEventListener('click', () => {
+        // اگر عکسی هست، ضربه همان را انتخاب می‌کند؛ برای عوض کردنش دکمه‌ی
+        // جداگانه‌ی زیرش هست، تا کسی عکسش را ناخواسته از دست ندهد.
+        if (wallImage() && storedWall() !== 'custom') {
+          localStorage.setItem(WALL_KEY, 'custom');
+          applyWall('custom');
+          markActive(pick);
+          return;
+        }
+        file.click();
+      });
+
+      file.addEventListener('change', async () => {
+        const chosen = file.files?.[0];
+        file.value = '';
+        if (!chosen) return;
+        try {
+          const url = await prepareWallImage(chosen);
+          try {
+            localStorage.setItem(WALL_IMAGE_KEY, url);
+          } catch {
+            throw new Error('جای کافی در این مرورگر نیست؛ عکس کوچک‌تری انتخاب کنید.');
+          }
+          localStorage.setItem(WALL_KEY, 'custom');
+          applyWall('custom');
+          drawPick();
+          markActive(pick);
+          removeImage.classList.remove('is-hidden');
+          toast('پس‌زمینه عوض شد.');
+        } catch (err) {
+          toast(err.message, true);
+        }
+      });
+
+      const removeImage = document.createElement('button');
+      removeImage.type = 'button';
+      removeImage.className = 'btn wall-clear';
+      removeImage.textContent = 'برداشتن عکس پس‌زمینه';
+      removeImage.classList.toggle('is-hidden', !wallImage());
+      removeImage.addEventListener('click', () => {
+        localStorage.removeItem(WALL_IMAGE_KEY);
+        if (storedWall() === 'custom') {
+          localStorage.setItem(WALL_KEY, DEFAULT_WALL);
+          applyWall(DEFAULT_WALL);
+          markActive(wallRow.querySelector(`[data-wall="${DEFAULT_WALL}"]`));
+        }
+        drawPick();
+        removeImage.classList.add('is-hidden');
+      });
+
+      drawPick();
+      wallRow.appendChild(pick);
+      wallRow.after(file, removeImage);
     }
     return box;
   }
@@ -2971,7 +3096,9 @@
     const wrap = document.createElement('div');
     wrap.className = 'stack';
     const list = document.createElement('div');
-    list.className = 'stack';
+    // جای خالی از پیش گرفته می‌شود: این فهرست با تأخیر از سرور می‌آید و اگر
+    // ارتفاعش ناگهان زیاد شود، هرچه زیرش است زیر دست کاربر می‌پرد.
+    list.className = 'stack async-list';
     list.innerHTML = '<p class="muted">در حال بارگذاری…</p>';
 
     const closeOthers = document.createElement('button');
@@ -3054,7 +3181,7 @@
     const wrap = document.createElement('div');
     wrap.className = 'stack';
     const list = document.createElement('div');
-    list.className = 'stack';
+    list.className = 'stack async-list';
 
     const draw = (users) => {
       list.innerHTML = '';
@@ -3244,6 +3371,8 @@
         labeled('نام نمایشی', name, 'همین نامی که دیگران می‌بینند.'),
         labeled('درباره‌ی من', bio),
         save,
+        sectionTitle('ظاهر'),
+        appearanceSection(),
         sectionTitle('تغییر رمز عبور'),
         labeled('رمز فعلی', currentPassword),
         labeled('رمز تازه', newPassword, 'حداقل ۸ نویسه.'),
@@ -3252,8 +3381,6 @@
         devicesSection(),
         sectionTitle('کاربران بلاک‌شده'),
         blockedSection(),
-        sectionTitle('ظاهر'),
-        appearanceSection(),
         sectionTitle('سایر'),
         notifyBtn,
         logout,

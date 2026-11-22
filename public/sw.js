@@ -6,7 +6,7 @@
  * به کاربری که یک بار سایت را باز کرده بود نرسد. حالا همیشه نسخه‌ی تازه گرفته
  * می‌شود و کش فقط وقتی به کار می‌آید که شبکه در دسترس نباشد.
  */
-const CACHE = '9chat-shell-v4';
+const CACHE = '9chat-shell-v5';
 const SHELL = [
   '/',
   '/index.html',
@@ -15,6 +15,12 @@ const SHELL = [
   '/manifest.webmanifest',
   '/icons/icon-192.png',
   '/fonts/outfit-600-latin.woff2',
+  // فونت متن فارسی باید آفلاین هم باشد، وگرنه برنامه در قطعی با فونت
+  // پیش‌فرض دستگاه بالا می‌آید و یک‌دفعه شکل دیگری پیدا می‌کند.
+  '/fonts/vazirmatn-400-arabic.woff2',
+  '/fonts/vazirmatn-700-arabic.woff2',
+  '/fonts/vazirmatn-400-latin.woff2',
+  '/fonts/vazirmatn-700-latin.woff2',
 ];
 
 self.addEventListener('install', (event) => {

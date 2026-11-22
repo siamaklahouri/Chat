@@ -1,8 +1,40 @@
 /* 9chat — طرح تیره، موبایل‌محور و راست‌چین */
 
-/* فونت واژه‌نشان، محلی میزبانی می‌شود تا برنامه به هیچ سرویس بیرونی وابسته نباشد
-   (در قطعی اینترنت هم باید کامل بالا بیاید). فقط لاتین است، پس متن فارسی
-   به‌صورت خودکار روی فونت سیستم می‌افتد. */
+/* همه‌ی فونت‌ها محلی میزبانی می‌شوند تا برنامه به هیچ سرویس بیرونی وابسته
+   نباشد؛ در قطعی اینترنت جهانی هم باید کامل و درست بالا بیاید.
+
+   وزیرمتن (SIL OFL 1.1 — متن مجوز در fonts/vazirmatn-LICENSE.txt) فونت
+   اصلیِ متن است. بدون آن، متن فارسی روی فونت پیش‌فرض دستگاه می‌افتد که روی
+   هر گوشی فرق می‌کند و معمولاً برای رابط کاربری ساخته نشده.
+
+   عربی و لاتین جدا بارگذاری می‌شوند و unicode-range تعیین می‌کند کدام لازم
+   است؛ پس دستگاهی که فقط فارسی می‌بیند، ۱۶ کیلوبایتِ لاتین را دانلود نمی‌کند. */
+@font-face {
+  font-family: 'Vazirmatn';
+  src: url('/fonts/vazirmatn-400-arabic.woff2') format('woff2');
+  font-weight: 400; font-style: normal; font-display: swap;
+  unicode-range: U+0600-06FF, U+0750-077F, U+08A0-08FF, U+FB50-FDFF, U+FE70-FEFF, U+200C-200D;
+}
+@font-face {
+  font-family: 'Vazirmatn';
+  src: url('/fonts/vazirmatn-700-arabic.woff2') format('woff2');
+  font-weight: 700; font-style: normal; font-display: swap;
+  unicode-range: U+0600-06FF, U+0750-077F, U+08A0-08FF, U+FB50-FDFF, U+FE70-FEFF, U+200C-200D;
+}
+@font-face {
+  font-family: 'Vazirmatn';
+  src: url('/fonts/vazirmatn-400-latin.woff2') format('woff2');
+  font-weight: 400; font-style: normal; font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+2000-206F, U+20AC, U+2122, U+2212;
+}
+@font-face {
+  font-family: 'Vazirmatn';
+  src: url('/fonts/vazirmatn-700-latin.woff2') format('woff2');
+  font-weight: 700; font-style: normal; font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+2000-206F, U+20AC, U+2122, U+2212;
+}
+
+/* فقط برای نشان برنامه و عددهای درشت. */
 @font-face {
   font-family: 'Outfit';
   src: url('/fonts/outfit-600-latin.woff2') format('woff2');
@@ -44,7 +76,7 @@
   --header-h: 60px;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
-  font-family: system-ui, 'Segoe UI', Vazirmatn, Tahoma, sans-serif;
+  font-family: 'Vazirmatn', system-ui, 'Segoe UI', Tahoma, sans-serif;
 }
 
 /* تم روشن. دو جا تکرار شده چون CSS نمی‌تواند «سلیقه‌ی سیستم» و «انتخاب دستی»
@@ -71,6 +103,7 @@
     --brand-dot: #0f9d6f;
     --wash: rgba(15, 23, 42, .06);
     --wash-strong: rgba(15, 23, 42, .13);
+    --wall-scrim: rgba(255, 255, 255, .55);
     --auth-glow: color-mix(in srgb, var(--accent) 14%, #fff);
     --list-glow: color-mix(in srgb, var(--accent) 10%, transparent);
     --shadow: rgba(15, 23, 42, .12);
@@ -97,6 +130,7 @@
   --brand-dot: #0f9d6f;
   --wash: rgba(15, 23, 42, .06);
   --wash-strong: rgba(15, 23, 42, .13);
+  --wall-scrim: rgba(255, 255, 255, .55);
   --auth-glow: color-mix(in srgb, var(--accent) 14%, #fff);
   --list-glow: color-mix(in srgb, var(--accent) 10%, transparent);
   --shadow: rgba(15, 23, 42, .12);
@@ -138,6 +172,9 @@
     repeating-linear-gradient(45deg, color-mix(in srgb, var(--accent) 12%, transparent) 0 10px, transparent 10px 24px);
   --wall: var(--wall-aurora);
   --wall-size: auto;
+  --wall-pos: 0 0;
+  --wall-repeat: repeat;
+  --wall-scrim: rgba(8, 12, 18, .5);
 }
 
 [data-wall='aurora'] { --wall: var(--wall-aurora); --wall-size: auto; }
@@ -148,6 +185,14 @@
 [data-wall='grid']   { --wall: var(--wall-grid);   --wall-size: 26px 26px; }
 [data-wall='waves']  { --wall: var(--wall-waves);  --wall-size: auto; }
 [data-wall='plain']  { --wall: none;               --wall-size: auto; }
+/* عکس دلخواه کاربر. پرده‌ی نیم‌شفاف رویش می‌نشیند وگرنه متن روی عکس روشن
+   گم می‌شود — همان کاری که هر پیام‌رسانی با کاغذدیواری می‌کند. */
+[data-wall='custom'] {
+  --wall: linear-gradient(var(--wall-scrim), var(--wall-scrim)), var(--wall-custom, none);
+  --wall-size: cover;
+  --wall-pos: center;
+  --wall-repeat: no-repeat;
+}
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
@@ -382,7 +427,8 @@ a.hint { text-decoration: none; }
 
 .search-row { padding: 8px 12px 6px; position: relative; }
 .search-row input {
-  padding-block: 9px; border-radius: 14px; font-size: 14px;
+  padding-block: 8px; border-radius: 12px; font-size: 14px;
+  background: var(--bg-3);
 }
 .search-row svg {
   position: absolute; inset-inline-start: 24px; top: 50%;
@@ -403,11 +449,11 @@ a.hint { text-decoration: none; }
 /* جداکننده‌ی نازک بین ردیف‌ها، نه زیر آخرین ردیف. */
 .conversation::after {
   content: ''; position: absolute; bottom: 0;
-  inset-inline-start: 66px; inset-inline-end: 12px;
+  inset-inline-start: 70px; inset-inline-end: 12px;
   border-bottom: 1px solid var(--line); opacity: .55;
 }
 .conversation:last-child::after, .conversation.is-active::after { border: 0; }
-.conversation .avatar { width: 50px; height: 50px; font-size: 17px; }
+.conversation .avatar { width: 46px; height: 46px; font-size: 16px; }
 .conversation-name { font-size: 15px; }
 .conversation-list { padding: 4px 6px 10px; }
 
@@ -423,9 +469,9 @@ html[dir='rtl'] .conversation.is-active { box-shadow: inset -3px 0 0 var(--accen
 }
 .badge {
   background: var(--accent); color: #fff; border-radius: 999px;
-  min-width: 20px; padding: 2px 7px; font-size: 11px; font-weight: 700;
-  flex: none; text-align: center;
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 45%, transparent);
+  min-width: 19px; padding: 1px 6px; font-size: 11px; font-weight: 600;
+  line-height: 17px; flex: none; text-align: center;
+  /* هاله برداشته شد: روی پس‌زمینه‌ی تیره مثل لکه‌ی نور دیده می‌شد. */
 }
 .empty-list { padding: 28px 16px; text-align: center; color: var(--muted); font-size: 13px; }
 
@@ -507,6 +553,8 @@ html[dir='rtl'] .conversation.is-active { box-shadow: inset -3px 0 0 var(--accen
   background-color: var(--bg);
   background-image: var(--wall);
   background-size: var(--wall-size);
+  background-position: var(--wall-pos);
+  background-repeat: var(--wall-repeat);
 }
 
 /* گفتگوی کوتاه باید از پایین پر شود، نه اینکه به سربرگ بچسبد و زیرش خالی
@@ -709,6 +757,8 @@ html[dir='rtl'] .conversation.is-active { box-shadow: inset -3px 0 0 var(--accen
 .send-btn:disabled { opacity: .5; }
 /* آیکون هواپیما در چیدمان راست‌چین باید به سمت چپ نشانه برود. */
 .send-btn svg { transform: scaleX(-1); }
+/* فلش بازگشت در چیدمان راست‌چین باید به راست اشاره کند، نه چپ. */
+html[dir='rtl'] #backBtn svg { transform: scaleX(-1); }
 
 /* -------------------------------- پنجره‌ها ------------------------------ */
 
@@ -1012,8 +1062,8 @@ html[dir='rtl'] .conversation.is-active { box-shadow: inset -3px 0 0 var(--accen
 /* ------------------------------- استوری ------------------------------- */
 
 .story-strip {
-  display: flex; gap: 12px; overflow-x: auto; scrollbar-width: none;
-  padding: 10px 12px 12px;
+  display: flex; gap: 10px; overflow-x: auto; scrollbar-width: none;
+  padding: 8px 12px 10px;
   border-bottom: 1px solid var(--line);
 }
 .story-strip::-webkit-scrollbar { display: none; }
@@ -1021,24 +1071,24 @@ html[dir='rtl'] .conversation.is-active { box-shadow: inset -3px 0 0 var(--accen
 .story-item {
   display: grid; justify-items: center; gap: 6px;
   border: 0; background: transparent; color: inherit;
-  width: 68px; flex: none; padding: 0;
+  width: 60px; flex: none; padding: 0;
 }
 /* حلقه‌ی رنگی یعنی ندیده‌ای؛ خاکستری یعنی دیده‌ای. */
 .story-ring {
-  width: 64px; height: 64px; border-radius: 50%;
+  width: 56px; height: 56px; border-radius: 50%;
   display: grid; place-items: center;
   /* حلقه‌ی رنگی یعنی ندیده‌ای. فاصله‌ی داخلی با حاشیه‌ی هم‌رنگِ پس‌زمینه
      ساخته می‌شود، نه با سایه — سایه بیرون می‌افتد و خود حلقه را می‌پوشاند. */
-  background: conic-gradient(from 150deg, var(--accent), var(--brand-dot), #f59e0b, var(--accent));
+  background: linear-gradient(145deg, var(--accent), color-mix(in srgb, var(--brand-dot) 70%, var(--accent)));
   padding: 3px;
 }
 .story-ring.is-seen { background: var(--line); }
 .story-ring .avatar {
-  width: 100%; height: 100%; font-size: 20px;
+  width: 100%; height: 100%; font-size: 18px;
   border: 2.5px solid var(--bg-2);
 }
 .story-label {
-  font-size: 11px; max-width: 68px;
+  font-size: 11px; max-width: 60px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
@@ -1129,5 +1179,25 @@ html[dir='rtl'] .conversation.is-active { box-shadow: inset -3px 0 0 var(--accen
   background-color: var(--bg);
   background-image: var(--wall);
   background-size: var(--wall-size);
+  background-position: var(--wall-pos);
+  background-repeat: var(--wall-repeat);
 }
 .wall-chip.is-active { border-color: var(--accent); }
+
+/* کاشی «عکس از گالری» */
+.wall-pick {
+  display: grid; place-items: center;
+  font-size: 22px; color: var(--muted);
+  background-color: var(--bg-3);
+  background-image: none;
+  border-style: dashed;
+}
+.wall-pick.has-image {
+  background-size: cover; background-position: center; background-repeat: no-repeat;
+  border-style: solid;
+}
+.wall-clear { margin-block-start: 10px; width: 100%; padding: 7px 12px; font-size: 13px; }
+
+/* فهرست‌هایی که با تأخیر از سرور پر می‌شوند. ارتفاع کمینه نگه می‌دارد تا
+   وقتی داده می‌رسد، بقیه‌ی پنجره زیر دست کاربر بالا و پایین نپرد. */
+.async-list { min-height: 72px; }
