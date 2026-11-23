@@ -170,25 +170,65 @@
 :root {
   /* همه با درصد نوشته شده‌اند، نه پیکسل، تا نمونه‌ی ۷۰ پیکسلیِ انتخابگر هم
      همان تصویرِ ناحیه‌ی بزرگ پیام‌ها را نشان بدهد. */
+  /* ---- کاغذدیواری گفتگو ----
+     هر کدام چند لکه‌ی بزرگ و نرم‌اند، نه یک گرادیان تخت؛ چیزی که به چشم
+     «تصویر» می‌آید نه «رنگ پس‌زمینه». رنگ‌ها با color-mix روی --bg سوار
+     می‌شوند، پس در تم روشن خودشان روشن می‌شوند و متن خوانا می‌ماند.
+
+     --wall-sheen روی همه‌شان می‌نشیند: یک بازتابِ مورب و بسیار کم‌رنگ که
+     سطح را شیشه‌ای نشان می‌دهد. همان چیزی که یک تصویر تخت را «مایع» می‌کند. */
+  --wall-sheen:
+    linear-gradient(142deg,
+      rgba(255, 255, 255, .085) 0%,
+      rgba(255, 255, 255, .02) 26%,
+      rgba(255, 255, 255, 0) 46%,
+      rgba(255, 255, 255, 0) 60%,
+      rgba(255, 255, 255, .045) 86%,
+      rgba(255, 255, 255, .095) 100%);
+
   --wall-aurora:
-    radial-gradient(120% 70% at 100% 0%, var(--list-glow), transparent 60%);
+    radial-gradient(78% 42% at 18% -6%, color-mix(in srgb, #22d3ee 42%, transparent), transparent 72%),
+    radial-gradient(72% 38% at 82% 12%, color-mix(in srgb, #a855f7 38%, transparent), transparent 72%),
+    radial-gradient(90% 44% at 50% 48%, color-mix(in srgb, #10b981 30%, transparent), transparent 74%),
+    radial-gradient(96% 50% at 30% 108%, color-mix(in srgb, #2563eb 40%, transparent), transparent 76%);
   --wall-mesh:
-    radial-gradient(62% 52% at 8% 4%, color-mix(in srgb, var(--accent) 26%, transparent), transparent 72%),
-    radial-gradient(58% 46% at 96% 16%, color-mix(in srgb, var(--brand-dot) 20%, transparent), transparent 72%),
-    radial-gradient(80% 58% at 42% 106%, color-mix(in srgb, var(--accent) 20%, transparent), transparent 72%);
+    radial-gradient(70% 44% at 4% 2%, color-mix(in srgb, var(--accent) 52%, transparent), transparent 72%),
+    radial-gradient(66% 40% at 98% 18%, color-mix(in srgb, var(--brand-dot) 40%, transparent), transparent 72%),
+    radial-gradient(74% 40% at 92% 72%, color-mix(in srgb, #ec4899 30%, transparent), transparent 74%),
+    radial-gradient(92% 48% at 28% 104%, color-mix(in srgb, var(--accent) 44%, transparent), transparent 76%);
   --wall-sunset:
-    radial-gradient(95% 62% at 100% 0%, color-mix(in srgb, #f59e0b 26%, transparent), transparent 68%),
-    radial-gradient(95% 72% at 0% 100%, color-mix(in srgb, #ec4899 24%, transparent), transparent 68%);
+    radial-gradient(84% 40% at 88% -8%, color-mix(in srgb, #f59e0b 46%, transparent), transparent 72%),
+    radial-gradient(80% 38% at 14% 16%, color-mix(in srgb, #fb7185 36%, transparent), transparent 72%),
+    radial-gradient(90% 44% at 70% 62%, color-mix(in srgb, #d946ef 30%, transparent), transparent 74%),
+    radial-gradient(100% 50% at 20% 110%, color-mix(in srgb, #7c3aed 40%, transparent), transparent 76%);
+  --wall-ocean:
+    radial-gradient(80% 42% at 10% -4%, color-mix(in srgb, #0ea5e9 46%, transparent), transparent 72%),
+    radial-gradient(76% 40% at 94% 24%, color-mix(in srgb, #06b6d4 34%, transparent), transparent 72%),
+    radial-gradient(96% 48% at 46% 104%, color-mix(in srgb, #1d4ed8 44%, transparent), transparent 76%);
+  --wall-forest:
+    radial-gradient(78% 40% at 92% -6%, color-mix(in srgb, #34d399 38%, transparent), transparent 72%),
+    radial-gradient(82% 42% at 6% 26%, color-mix(in srgb, #0f766e 42%, transparent), transparent 74%),
+    radial-gradient(98% 48% at 60% 106%, color-mix(in srgb, #065f46 48%, transparent), transparent 76%);
+  --wall-plum:
+    radial-gradient(76% 40% at 86% -6%, color-mix(in srgb, #e879f9 36%, transparent), transparent 72%),
+    radial-gradient(80% 42% at 8% 22%, color-mix(in srgb, #7e22ce 44%, transparent), transparent 74%),
+    radial-gradient(98% 48% at 56% 106%, color-mix(in srgb, #4c1d95 48%, transparent), transparent 76%);
   --wall-night:
-    linear-gradient(180deg, color-mix(in srgb, var(--accent) 12%, var(--bg-3)), var(--bg) 62%);
+    radial-gradient(90% 46% at 50% -10%, color-mix(in srgb, #1e3a8a 54%, transparent), transparent 76%),
+    radial-gradient(70% 36% at 88% 44%, color-mix(in srgb, #4338ca 30%, transparent), transparent 74%),
+    linear-gradient(180deg, color-mix(in srgb, var(--accent) 10%, transparent), transparent 55%);
   --wall-dots:
-    radial-gradient(color-mix(in srgb, var(--text) 14%, transparent) 1.4px, transparent 1.5px);
+    radial-gradient(color-mix(in srgb, var(--text) 13%, transparent) 1.4px, transparent 1.5px),
+    radial-gradient(85% 45% at 80% -6%, color-mix(in srgb, var(--accent) 26%, transparent), transparent 74%);
   --wall-grid:
-    repeating-linear-gradient(0deg, color-mix(in srgb, var(--text) 10%, transparent) 0 1px, transparent 1px 26px),
-    repeating-linear-gradient(90deg, color-mix(in srgb, var(--text) 10%, transparent) 0 1px, transparent 1px 26px);
+    repeating-linear-gradient(0deg, color-mix(in srgb, var(--text) 9%, transparent) 0 1px, transparent 1px 26px),
+    repeating-linear-gradient(90deg, color-mix(in srgb, var(--text) 9%, transparent) 0 1px, transparent 1px 26px),
+    radial-gradient(85% 45% at 20% -6%, color-mix(in srgb, var(--accent) 26%, transparent), transparent 74%);
   --wall-waves:
-    repeating-linear-gradient(45deg, color-mix(in srgb, var(--accent) 12%, transparent) 0 10px, transparent 10px 24px);
-  --wall: var(--wall-aurora);
+    repeating-linear-gradient(45deg, color-mix(in srgb, var(--accent) 11%, transparent) 0 10px, transparent 10px 24px),
+    radial-gradient(85% 45% at 85% 100%, color-mix(in srgb, var(--brand-dot) 24%, transparent), transparent 74%);
+
+  --wall: var(--wall-sheen), var(--wall-mesh);
   --wall-size: auto;
   --wall-pos: 0 0;
   --wall-repeat: repeat;
@@ -207,18 +247,32 @@
   --scrim: rgba(2, 6, 14, .45);
 }
 
-[data-wall='aurora'] { --wall: var(--wall-aurora); --wall-size: auto; }
-[data-wall='mesh']   { --wall: var(--wall-mesh);   --wall-size: auto; }
-[data-wall='sunset'] { --wall: var(--wall-sunset); --wall-size: auto; }
-[data-wall='night']  { --wall: var(--wall-night);  --wall-size: auto; }
-[data-wall='dots']   { --wall: var(--wall-dots);   --wall-size: 18px 18px; }
-[data-wall='grid']   { --wall: var(--wall-grid);   --wall-size: 26px 26px; }
-[data-wall='waves']  { --wall: var(--wall-waves);  --wall-size: auto; }
-[data-wall='plain']  { --wall: none;               --wall-size: auto; }
+/* بازتاب همیشه لایه‌ی رویی است؛ --wall-size هم لایه‌به‌لایه داده می‌شود،
+   چون الگوهای تکرارشونده اندازه‌ی خودشان را دارند و بازتاب نباید کاشی شود. */
+[data-wall='aurora'] { --wall: var(--wall-sheen), var(--wall-aurora); }
+[data-wall='mesh']   { --wall: var(--wall-sheen), var(--wall-mesh); }
+[data-wall='sunset'] { --wall: var(--wall-sheen), var(--wall-sunset); }
+[data-wall='ocean']  { --wall: var(--wall-sheen), var(--wall-ocean); }
+[data-wall='forest'] { --wall: var(--wall-sheen), var(--wall-forest); }
+[data-wall='plum']   { --wall: var(--wall-sheen), var(--wall-plum); }
+[data-wall='night']  { --wall: var(--wall-sheen), var(--wall-night); }
+[data-wall='dots'] {
+  --wall: var(--wall-sheen), var(--wall-dots);
+  --wall-size: auto, 18px 18px, auto;
+}
+[data-wall='grid'] {
+  --wall: var(--wall-sheen), var(--wall-grid);
+  --wall-size: auto, 26px 26px, 26px 26px, auto;
+}
+[data-wall='waves'] { --wall: var(--wall-sheen), var(--wall-waves); }
+[data-wall='plain'] { --wall: var(--wall-sheen); }
 /* عکس دلخواه کاربر. پرده‌ی نیم‌شفاف رویش می‌نشیند وگرنه متن روی عکس روشن
    گم می‌شود — همان کاری که هر پیام‌رسانی با کاغذدیواری می‌کند. */
 [data-wall='custom'] {
-  --wall: linear-gradient(var(--wall-scrim), var(--wall-scrim)), var(--wall-custom, none);
+  --wall:
+    var(--wall-sheen),
+    linear-gradient(var(--wall-scrim), var(--wall-scrim)),
+    var(--wall-custom, none);
   --wall-size: cover;
   --wall-pos: center;
   --wall-repeat: no-repeat;
