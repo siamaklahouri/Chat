@@ -584,9 +584,23 @@
     });
   }
 
+  /**
+   * هم فهرست کاملِ تبِ «گفتگوها» را می‌سازد و هم نتیجه‌ی تبِ «جستجو» را.
+   * یک تابع، چون هر دو دقیقاً یک ردیف را نشان می‌دهند.
+   */
   function renderConversations() {
-    const list = $('conversationList');
-    const filter = state.filter.trim().toLowerCase();
+    drawConversations($('conversationList'), '');
+    if (state.tab === 'search') drawConversations($('searchResults'), state.filter);
+  }
+
+  function drawConversations(list, rawFilter) {
+    const filter = rawFilter.trim().toLowerCase();
+    // صفحه‌ی جستجو تا وقتی چیزی ننوشته‌اند خالی می‌ماند؛ وگرنه همان فهرستِ
+    // کاملِ تبِ گفتگوها را دوباره نشان می‌داد.
+    if (!filter && list.id === 'searchResults') {
+      list.innerHTML = '';
+      return;
+    }
     const items = [...state.conversations.values()]
       .filter((conv) => !filter || conv.title.toLowerCase().includes(filter))
       .sort((a, b) => (b.lastMessage?.id || 0) - (a.lastMessage?.id || 0));
@@ -3922,7 +3936,6 @@
     });
   });
 
-  $('themeBtn').addEventListener('click', appearanceModal);
   for (const button of $('tabBar').querySelectorAll('.tab-item')) {
     button.addEventListener('click', () => showTab(button.dataset.tab));
   }
@@ -3932,7 +3945,7 @@
   $('backBtn').addEventListener('click', leaveChat);
   $('conversationSearch').addEventListener('input', (event) => {
     state.filter = event.target.value;
-    renderConversations();
+    drawConversations($('searchResults'), state.filter);
     clearTimeout(state.searchTimer);
     // جستجوی داخل پیام‌ها به سرور می‌رود، پس کمی صبر می‌کنیم.
     state.searchTimer = setTimeout(searchInMessages, 350);
@@ -4040,59 +4053,6 @@
   }
 
   function renderStories() {
-    const strip = $('storyStrip');
-    strip.innerHTML = '';
-
-    const groups = state.stories || [];
-    const mine = groups.find((g) => g.mine);
-
-    // کاشی «استوری من» همیشه هست، حتی اگر استوری‌ای نگذاشته باشم.
-    const own = document.createElement('button');
-    own.type = 'button';
-    own.className = 'story-item story-mine';
-    const ring = document.createElement('span');
-    ring.className = `story-ring${mine && !mine.allSeen ? '' : ' is-seen'}`;
-    if (mine) ring.className = 'story-ring';
-    const avatar = document.createElement('span');
-    avatar.className = 'avatar';
-    paintAvatar(avatar, state.me.displayName, state.me.avatarColor, false, state.me.avatarUrl);
-    ring.appendChild(avatar);
-    if (!mine) {
-      const plus = document.createElement('span');
-      plus.className = 'story-add';
-      plus.textContent = '+';
-      ring.appendChild(plus);
-    }
-    const label = document.createElement('span');
-    label.className = 'story-label';
-    label.textContent = mine ? t('استوری من') : t('افزودن');
-    own.append(ring, label);
-    own.addEventListener('click', () => {
-      if (mine) openStories(groups.indexOf(mine));
-      else $('storyInput').click();
-    });
-    strip.appendChild(own);
-
-    for (const group of groups) {
-      if (group.mine) continue;
-      const item = document.createElement('button');
-      item.type = 'button';
-      item.className = 'story-item';
-      const r = document.createElement('span');
-      r.className = `story-ring${group.allSeen ? ' is-seen' : ''}`;
-      const a = document.createElement('span');
-      a.className = 'avatar';
-      paintAvatar(a, group.user.displayName, group.user.avatarColor, false, group.user.avatarUrl);
-      r.appendChild(a);
-      const l = document.createElement('span');
-      l.className = 'story-label';
-      l.textContent = group.user.displayName;
-      item.append(r, l);
-      item.addEventListener('click', () => openStories(groups.indexOf(group)));
-      strip.appendChild(item);
-    }
-
-    strip.classList.remove('is-hidden');
     renderStoriesPage();
   }
 
@@ -4138,11 +4098,12 @@
    * چهار بخشِ برنامه. هر بار فقط یکی دیده می‌شود؛ محتوای تبِ تماس و
    * تنظیمات تنبل ساخته می‌شود، چون بیشتر کاربرها سراغشان نمی‌روند.
    */
-  const TABS = ['chats', 'stories', 'calls', 'settings'];
+  const TABS = ['chats', 'calls', 'stories', 'search', 'settings'];
   const PAGE_OF = {
     chats: 'chatsPage',
-    stories: 'storiesPage',
     calls: 'callsPage',
+    stories: 'storiesPage',
+    search: 'searchPage',
     settings: 'settingsPage',
   };
 
@@ -4157,6 +4118,11 @@
       else button.removeAttribute('aria-current');
     }
     if (tab === 'calls') renderCallsPage();
+    if (tab === 'search') {
+      drawConversations($('searchResults'), state.filter);
+      // صفحه‌کلید را خودش بالا می‌آورد؛ کسی که روی «جستجو» می‌زند می‌خواهد بنویسد.
+      setTimeout(() => $('conversationSearch').focus(), 60);
+    }
     if (tab === 'settings') {
       // هر بار از نو ساخته می‌شود تا فهرست دستگاه‌ها و بلاک‌شده‌ها تازه باشد.
       $('settingsBody').innerHTML = '';

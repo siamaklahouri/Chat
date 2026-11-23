@@ -398,6 +398,8 @@
     'پنل مدیریت': 'Admin panel',
     'تنظیم ظاهر: تم، رنگ و پس‌زمینه': 'Appearance: theme, color and background',
     'جستجو در گفتگوها…': 'Search chats…',
+    'جستجو در گفتگوها و پیام‌ها…': 'Search chats and messages…',
+    'جستجو': 'Search',
     'بازگشت': 'Back',
     'اطلاعات گفتگو': 'Chat info',
     'لغو انتخاب': 'Cancel selection',

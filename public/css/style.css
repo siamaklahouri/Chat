@@ -531,11 +531,12 @@ a.hint { text-decoration: none; }
   background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 7%, var(--bg-2)), var(--bg-2));
   box-shadow: 0 1px 0 var(--line), 0 6px 16px -12px var(--shadow);
   position: relative; z-index: 3;
+  padding-block: calc(12px + var(--safe-top)) 13px;
 }
 
 .sidebar-title { flex: 1; min-width: 0; line-height: 1.25; }
 .sidebar-title strong {
-  display: block; font-size: 15.5px; font-weight: 700;
+  display: block; font-size: 17px; font-weight: 700; letter-spacing: -.2px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
@@ -567,7 +568,7 @@ a.hint { text-decoration: none; }
 }
 .sidebar-header #newChatBtn:active { background: var(--accent-2); }
 
-.sidebar-header .avatar { width: 44px; height: 44px; font-size: 16px; }
+.sidebar-header .avatar { width: 46px; height: 46px; font-size: 17px; }
 
 .avatar {
   position: relative;
@@ -632,9 +633,9 @@ a.hint { text-decoration: none; }
   :root:not([data-theme='dark']) .theme-icon-dark { display: none; }
 }
 
-.search-row { padding: 8px 12px 6px; position: relative; }
+.search-row { padding: 10px 12px; position: relative; flex: none; }
 .search-row input {
-  padding-block: 8px; border-radius: 12px; font-size: 14px;
+  padding-block: 10px; border-radius: 14px; font-size: 15px;
   background: var(--bg-3); border-color: var(--line);
 }
 .search-row svg {
@@ -1527,7 +1528,9 @@ html[dir='rtl'] #backBtn svg { transform: scaleX(-1); }
   inset-inline: 12px;
   bottom: calc(10px + var(--safe-bottom));
   height: var(--tabbar-h);
-  display: grid; grid-template-columns: repeat(4, 1fr);
+  /* ستون‌ها از روی تعداد دکمه‌ها ساخته می‌شوند، نه عددِ ثابت: با اضافه
+     شدن یک تب، نوار نباید به خط دوم بیفتد. */
+  display: grid; grid-auto-flow: column; grid-auto-columns: 1fr;
   border-radius: 20px;
   background: var(--tab-glass);
   border: 1px solid var(--tab-line);
@@ -1542,7 +1545,10 @@ html[dir='rtl'] #backBtn svg { transform: scaleX(-1); }
   display: grid; justify-items: center; align-content: center; gap: 3px;
   font-size: 11px; padding: 0;
 }
-.tab-item span { line-height: 1; }
+.tab-item span {
+  line-height: 1; max-width: 100%; padding: 0 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .tab-item.is-active { color: var(--accent); }
 .tab-item:active { transform: scale(.93); }
 @media (prefers-reduced-motion: reduce) { .tab-item:active { transform: none; } }
@@ -1551,8 +1557,13 @@ html[dir='rtl'] #backBtn svg { transform: scaleX(-1); }
    آخرین ردیفِ هر فهرست برای همیشه پشت نوار می‌ماند. */
 .sidebar { position: relative; }
 .tab-page { display: flex; flex-direction: column; flex: 1; min-height: 0; }
-.conversation-list, .stories-grid, .calls-list, .settings-body {
+.conversation-list, .stories-grid, .calls-list, .settings-body, .search-results {
   padding-bottom: calc(var(--tabbar-h) + 22px + var(--safe-bottom));
+  /* بدون این، کشیدن به پایین در سرِ فهرست به صفحه سرایت می‌کند و اندروید
+     «کشیدن برای تازه‌سازی» را راه می‌اندازد — یعنی برنامه از نو بار می‌شود
+     و کاربر فکر می‌کند اسکرول گیر کرده. */
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* ----- تبِ استوری‌ها ----- */
@@ -1618,3 +1629,6 @@ html[dir='rtl'] .pill-btn + .pill-btn { box-shadow: inset -1px 0 0 var(--glass-l
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .tab-bar { background: var(--bg-2); }
 }
+
+/* نتیجه‌ی تبِ جستجو، همان ردیف‌های فهرست گفتگوها */
+.search-results { flex: 1; overflow-y: auto; }
