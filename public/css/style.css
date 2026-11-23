@@ -69,9 +69,9 @@
   --on-me-wash2: rgba(255, 255, 255, .26);
   --bubble-them: rgba(255, 255, 255, .05);
   --bubble-blur: blur(26px) saturate(165%) brightness(.88);
-  --bubble-line: rgba(255, 255, 255, .13);
+  --bubble-line: rgba(255, 255, 255, .17);
   --bubble-hi: rgba(255, 255, 255, .18);
-  --bubble-shadow: 0 2px 12px rgba(0, 0, 0, .25);
+  --bubble-shadow: 0 3px 14px rgba(0, 0, 0, .38);
   --danger: #ef4444;
   --danger-soft: #fca5a5;
   --ok: #2ee6a6;
@@ -99,10 +99,10 @@
 @media (prefers-color-scheme: light) {
   :root:not([data-theme='dark']) {
     color-scheme: light;
-    --bg: #f2f5fa;
+    --bg: #e9edf5;
     --bg-2: #ffffff;
-    --bg-3: #eaeff7;
-    --line: #dce3ee;
+    --bg-3: #eef2f8;
+    --line: #d6deeb;
     --text: #0f172a;
     --muted: #5b6b80;
     /* همان ایده، وارونه: پشتِ حبابِ طرف مقابل روشن‌تر می‌شود تا متنِ
@@ -115,9 +115,9 @@
     --on-me-wash2: rgba(15, 23, 42, .16);
     --bubble-them: rgba(255, 255, 255, .28);
     --bubble-blur: blur(26px) saturate(145%) brightness(1.1);
-    --bubble-line: rgba(255, 255, 255, .6);
+    --bubble-line: rgba(255, 255, 255, .8);
     --bubble-hi: rgba(255, 255, 255, .9);
-    --bubble-shadow: 0 2px 12px rgba(15, 23, 42, .1);
+    --bubble-shadow: 0 3px 12px rgba(15, 23, 42, .16);
     --danger-soft: #b91c1c;
     --ok: #0f9d6f;
     --ok-soft: #047857;
@@ -127,8 +127,8 @@
     --wash: rgba(15, 23, 42, .06);
     --wash-strong: rgba(15, 23, 42, .13);
     --wall-scrim: rgba(255, 255, 255, .55);
-    --glass: rgba(255, 255, 255, .62);
-    --glass-soft: rgba(255, 255, 255, .45);
+    --glass: rgba(255, 255, 255, .82);
+    --glass-soft: rgba(255, 255, 255, .6);
     --glass-line: rgba(15, 23, 42, .1);
     --glass-hi: rgba(255, 255, 255, .75);
     --glass-shadow: 0 10px 30px rgba(15, 23, 42, .12);
@@ -147,10 +147,10 @@
 
 :root[data-theme='light'] {
   color-scheme: light;
-  --bg: #f2f5fa;
+  --bg: #e9edf5;
   --bg-2: #ffffff;
-  --bg-3: #eaeff7;
-  --line: #dce3ee;
+  --bg-3: #eef2f8;
+  --line: #d6deeb;
   --text: #0f172a;
   --muted: #5b6b80;
   /* همان ایده، وارونه: پشتِ حبابِ طرف مقابل روشن‌تر می‌شود تا متنِ
@@ -163,9 +163,9 @@
   --on-me-wash2: rgba(15, 23, 42, .16);
   --bubble-them: rgba(255, 255, 255, .28);
   --bubble-blur: blur(26px) saturate(145%) brightness(1.1);
-  --bubble-line: rgba(255, 255, 255, .6);
+  --bubble-line: rgba(255, 255, 255, .8);
   --bubble-hi: rgba(255, 255, 255, .9);
-  --bubble-shadow: 0 2px 12px rgba(15, 23, 42, .1);
+  --bubble-shadow: 0 3px 12px rgba(15, 23, 42, .16);
   --danger-soft: #b91c1c;
   --ok: #0f9d6f;
   --ok-soft: #047857;
@@ -270,8 +270,10 @@
      هر سطحِ شناور نیم‌شفاف است، پشتش محو می‌شود و یک خطِ نوری در لبه‌ی
      بالایش می‌نشیند. همان سه چیزی که به چشم «شیشه» می‌آید:
      شفافیت، محو شدنِ پشت، و بازتاب لبه. */
-  --glass: rgba(16, 23, 34, .58);
-  --glass-soft: rgba(18, 26, 37, .38);
+  /* فقط برای سطح‌هایی که واقعاً چیزی پشتشان هست: سربرگ و نوار نوشتنِ
+     روی کاغذدیواری، ورق‌های بازشونده، و توست. */
+  --glass: rgba(20, 28, 40, .72);
+  --glass-soft: rgba(20, 28, 40, .5);
   --glass-line: rgba(255, 255, 255, .1);
   --glass-hi: rgba(255, 255, 255, .14);
   --glass-blur: blur(22px) saturate(160%);
@@ -319,20 +321,14 @@ html, body {
   overscroll-behavior: none;
 }
 
-/* لایه‌ی رنگیِ پشتِ همه‌چیز؛ سطح‌های شیشه‌ای همین را محو می‌کنند. بدون آن،
-   شیشه روی رنگِ تخت هیچ فرقی با رنگِ تخت ندارد.
-   مستقیم روی body می‌نشیند، نه روی ::before با z-index منفی: چنین لایه‌ای
-   *زیر* پس‌زمینه‌ی خودِ body نقاشی می‌شود و هیچ‌وقت دیده نمی‌شود. */
-html { background: var(--bg); }
-body {
-  background:
-    radial-gradient(95% 55% at 95% -12%, color-mix(in srgb, var(--accent) 55%, transparent), transparent 78%),
-    radial-gradient(90% 50% at -12% 22%, color-mix(in srgb, var(--brand-dot) 30%, transparent), transparent 78%),
-    radial-gradient(95% 48% at 100% 62%, color-mix(in srgb, var(--accent) 30%, transparent), transparent 78%),
-    radial-gradient(110% 55% at 25% 112%, color-mix(in srgb, var(--accent) 42%, transparent), transparent 78%),
-    var(--bg);
-  background-attachment: fixed;
-}
+/* فهرست گفتگوها زمینه‌ی رنگی ندارد و نباید داشته باشد.
+   یک‌بار گرادیان رنگی پشتِ کلِ برنامه گذاشته شد تا شیشه چیزی برای نشان
+   دادن داشته باشد؛ نتیجه این شد که رنگ‌بازی جای ساختار را گرفت و برنامه
+   «تزیین‌شده» به نظر رسید نه واقعی. هر پیام‌رسانِ جدی فهرست را خنثی نگه
+   می‌دارد؛ کاغذدیواری فقط جای خودش، داخلِ گفتگو.
+   شیشه هم فقط جایی می‌ماند که واقعاً چیزی پشتش هست: حباب‌ها و سربرگ و
+   نوار نوشتن روی کاغذدیواری، و ورق‌هایی که روی صفحه باز می‌شوند. */
+html, body { background: var(--bg); }
 
 /* ------------------------------ شیشه ------------------------------
    یک کلاس، همه‌جا. سطحِ شیشه‌ای نیم‌شفاف است، پشتش را محو می‌کند و یک خطِ
@@ -520,11 +516,8 @@ a.hint { text-decoration: none; }
 
 .sidebar {
   display: flex; flex-direction: column;
-  border-inline-end: 1px solid var(--glass-line);
-  /* بدون backdrop-filter: پشتِ این ستون فقط گرادیانِ نرمِ body است و محو
-     کردنش هیچ تغییری در تصویر نمی‌دهد، ولی روی هر فریم GPU می‌خورد. شیشه
-     را جایی می‌گذاریم که پشتش جزئیات باشد: سربرگ‌ها، نوار نوشتن، پنجره‌ها. */
-  background: var(--glass-soft);
+  border-inline-end: 1px solid var(--line);
+  background: var(--bg-2);
   min-height: 0;
 }
 
@@ -534,13 +527,9 @@ a.hint { text-decoration: none; }
   border-bottom: 1px solid var(--line);
   /* رنگِ لهجه از بالا می‌تابد و پایین محو می‌شود، تا نوار یک سطح جدا از
      فهرست به نظر برسد نه ادامه‌ی آن. */
-  background:
-    radial-gradient(120% 140% at 85% -40%, color-mix(in srgb, var(--accent) 26%, transparent), transparent 70%),
-    var(--glass);
-  -webkit-backdrop-filter: var(--glass-blur);
-  backdrop-filter: var(--glass-blur);
-  box-shadow: inset 0 1px 0 var(--glass-hi);
-  border-bottom-color: var(--glass-line);
+  /* فقط یک ته‌رنگِ خیلی کم از رنگ لهجه، تا سربرگ از فهرست جدا دیده شود. */
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 7%, var(--bg-2)), var(--bg-2));
+  box-shadow: 0 1px 0 var(--line), 0 6px 16px -12px var(--shadow);
   position: relative; z-index: 3;
 }
 
@@ -651,7 +640,7 @@ a.hint { text-decoration: none; }
 .search-row { padding: 8px 12px 6px; position: relative; }
 .search-row input {
   padding-block: 8px; border-radius: 12px; font-size: 14px;
-  background: var(--glass-soft); border-color: var(--glass-line);
+  background: var(--bg-3); border-color: var(--line);
 }
 .search-row svg {
   position: absolute; inset-inline-start: 24px; top: 50%;
@@ -681,8 +670,9 @@ a.hint { text-decoration: none; }
 .conversation-list { padding: 4px 6px 10px; }
 
 .conversation:active, .conversation.is-active { background: var(--bg-3); }
-.conversation.is-active { box-shadow: inset 3px 0 0 var(--accent); }
-html[dir='rtl'] .conversation.is-active { box-shadow: inset -3px 0 0 var(--accent); }
+/* قبلاً یک نوار باریک در لبه بود؛ چون ردیف گوشه‌ی گرد دارد، آن نوار روی
+   گوشه خم می‌شد و مثل یک هلالِ بی‌ربط دیده می‌شد. حالا کل ردیف رنگ می‌گیرد. */
+.conversation.is-active { background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .conversation-main { flex: 1; min-width: 0; }
 .conversation-top { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
 .conversation-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1301,9 +1291,7 @@ html[dir='rtl'] #backBtn svg { transform: scaleX(-1); }
 .message-row.is-picked .bubble { outline: 2px solid var(--accent); outline-offset: 2px; }
 .select-bar {
   display: flex; align-items: center; gap: 10px;
-  padding: 8px 12px; border-bottom: 1px solid var(--glass-line); background: var(--glass);
-  -webkit-backdrop-filter: var(--glass-blur);
-  backdrop-filter: var(--glass-blur);
+  padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--bg-3);
 }
 .select-bar .count { flex: 1; font-weight: 600; font-size: 14px; }
 .select-bar .btn { padding: 7px 14px; font-size: 13px; }
@@ -1341,8 +1329,8 @@ html[dir='rtl'] #backBtn svg { transform: scaleX(-1); }
 .story-strip {
   display: flex; gap: 10px; overflow-x: auto; scrollbar-width: none;
   padding: 8px 12px 10px;
-  border-bottom: 1px solid var(--glass-line);
-  background: var(--glass-soft);
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-2);
 }
 .story-strip::-webkit-scrollbar { display: none; }
 
