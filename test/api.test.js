@@ -1767,3 +1767,63 @@ test('استوری: بعد از ۲۴ ساعت از فهرست و دیسک می�
   assert.equal(fs.existsSync(store.storyPathFor(story.id)), false);
   assert.equal(store.getStory(story.id), null);
 });
+
+/* ------------------------------- تماس‌ها ------------------------------- */
+
+test('فهرست تماس‌ها فقط تماس‌های خودِ کاربر را می‌دهد', async () => {
+  const store = require('../server/store.js');
+  const a = freshUser('cally', 'کالی');
+  const b = freshUser('callb', 'کالبی');
+  const outsider = freshUser('callc', 'کالسی');
+
+  const chat = await call('/api/conversations/direct', {
+    method: 'POST', token: a.token, body: { username: 'callb' },
+  });
+  const conversationId = chat.body.conversation.id;
+
+  store.createMessage({
+    conversationId, senderId: a.id, kind: 'call', body: 'ended', file: { durationMs: 42000 },
+  });
+  store.createMessage({ conversationId, senderId: b.id, kind: 'call', body: 'video-missed' });
+  store.createMessage({ conversationId, senderId: a.id, kind: 'text', body: 'یک پیام معمولی' });
+
+  const mine = await call('/api/calls', { token: a.token });
+  assert.equal(mine.status, 200);
+  assert.equal(mine.body.calls.length, 2, 'پیام متنی نباید در فهرست تماس‌ها بیاید');
+  // تازه‌ترین اول
+  assert.equal(mine.body.calls[0].body, 'video-missed');
+  assert.equal(mine.body.calls[1].body, 'ended');
+  assert.equal(mine.body.calls[1].durationMs, 42000);
+  // هر تماس باید بگوید با چه کسی بوده
+  assert.equal(mine.body.calls[0].conversation.id, conversationId);
+  // عنوان گفتگو برای هر کس نامِ طرفِ مقابلِ خودش است
+  assert.equal(mine.body.calls[0].conversation.title, 'کالبی');
+
+  const theirs = await call('/api/calls', { token: b.token });
+  assert.equal(theirs.body.calls.length, 2);
+  assert.equal(theirs.body.calls[0].conversation.title, 'کالی');
+
+  // غریبه هیچ‌کدام را نمی‌بیند
+  const none = await call('/api/calls', { token: outsider.token });
+  assert.equal(none.body.calls.length, 0);
+
+  // بدون ورود هم نه
+  assert.equal((await call('/api/calls')).status, 401);
+});
+
+test('پاک کردن گفتگو، تماس‌هایش را هم از فهرست برمی‌دارد', async () => {
+  const store = require('../server/store.js');
+  const a = freshUser('wipea', 'ویپ‌آ');
+  const b = freshUser('wipeb', 'ویپ‌بی');
+  const chat = await call('/api/conversations/direct', {
+    method: 'POST', token: a.token, body: { username: 'wipeb' },
+  });
+  const conversationId = chat.body.conversation.id;
+  store.createMessage({ conversationId, senderId: a.id, kind: 'call', body: 'ended', file: { durationMs: 1000 } });
+
+  assert.equal((await call('/api/calls', { token: a.token })).body.calls.length, 1);
+  await call(`/api/conversations/${conversationId}`, { method: 'DELETE', token: a.token });
+  assert.equal((await call('/api/calls', { token: a.token })).body.calls.length, 0);
+  // ولی برای طرف مقابل سر جایش است
+  assert.equal((await call('/api/calls', { token: b.token })).body.calls.length, 1);
+});

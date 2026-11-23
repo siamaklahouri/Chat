@@ -118,6 +118,7 @@
       </button>
     </header>
 
+    <div id="chatsPage" class="tab-page">
     <div class="search-row">
       <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M10 2a8 8 0 1 0 4.9 14.3l5.4 5.4 1.4-1.4-5.4-5.4A8 8 0 0 0 10 2Zm0 2a6 6 0 1 1 0 12 6 6 0 0 1 0-12Z"/></svg>
       <input id="conversationSearch" type="search" placeholder="جستجو در گفتگوها…" />
@@ -132,9 +133,42 @@
     <!-- نتیجه‌ی جستجو در متن پیام‌ها، جدا از فیلتر فهرست گفتگوها -->
     <div id="messageHits" class="message-hits is-hidden"></div>
 
-    <footer class="sidebar-footer">
-      <span id="wipeInfo" class="muted"></span>
-    </footer>
+    </div>
+
+    <!-- تبِ استوری‌ها -->
+    <div id="storiesPage" class="tab-page is-hidden">
+      <div id="storiesGrid" class="stories-grid"></div>
+    </div>
+
+    <!-- تبِ تماس‌ها -->
+    <div id="callsPage" class="tab-page is-hidden">
+      <div id="callsList" class="calls-list"></div>
+    </div>
+
+    <!-- تبِ تنظیمات -->
+    <div id="settingsPage" class="tab-page is-hidden">
+      <div id="settingsBody" class="settings-body"></div>
+    </div>
+
+    <!-- نوار شناورِ پایین -->
+    <nav id="tabBar" class="tab-bar" aria-label="بخش‌های برنامه">
+      <button type="button" class="tab-item is-active" data-tab="chats" aria-current="page">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M12 3a9 9 0 0 0-7.7 13.7L3 21l4.4-1.2A9 9 0 1 0 12 3Z"/></svg>
+        <span>گفتگوها</span>
+      </button>
+      <button type="button" class="tab-item" data-tab="stories">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 1 0 10 10h-2a8 8 0 1 1-8-8Zm0 4a6 6 0 1 0 6 6h-2a4 4 0 1 1-4-4Zm5.5-4.5 1.6 3.4 3.4 1.6-3.4 1.6-1.6 3.4-1.6-3.4L12.5 6.5l3.4-1.6Z"/></svg>
+        <span>استوری</span>
+      </button>
+      <button type="button" class="tab-item" data-tab="calls">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25c1.1.37 2.3.57 3.5.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.2.2 2.4.57 3.5a1 1 0 0 1-.25 1z"/></svg>
+        <span>تماس</span>
+      </button>
+      <button type="button" class="tab-item" data-tab="settings">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm9 4a9 9 0 0 1-.1 1.3l2 1.6-2 3.4-2.4-1a9 9 0 0 1-2.2 1.3l-.4 2.5h-4l-.4-2.5a9 9 0 0 1-2.2-1.3l-2.4 1-2-3.4 2-1.6a9.4 9.4 0 0 1 0-2.6l-2-1.6 2-3.4 2.4 1a9 9 0 0 1 2.2-1.3L9.9 2h4l.4 2.5a9 9 0 0 1 2.2 1.3l2.4-1 2 3.4-2 1.6c.07.43.1.86.1 1.3Z"/></svg>
+        <span>تنظیمات</span>
+      </button>
+    </nav>
   </aside>
 
   <!-- ستون گفتگو -->
@@ -157,12 +191,15 @@
           <strong id="chatName">…</strong>
           <small id="chatStatus" class="muted"></small>
         </div>
-        <button id="callBtn" class="icon-btn is-hidden" title="تماس صوتی" aria-label="تماس صوتی">
-          <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25c1.1.37 2.3.57 3.5.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.2.2 2.4.57 3.5a1 1 0 0 1-.25 1z"/></svg>
-        </button>
-        <button id="videoCallBtn" class="icon-btn is-hidden" title="تماس تصویری" aria-label="تماس تصویری">
-          <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M4 6h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Zm14 4.5 4-2.5v8l-4-2.5z"/></svg>
-        </button>
+        <!-- دو دکمه‌ی تماس در یک کپسول: یک چیزِ واحد، نه دو آیکون شناور -->
+        <div id="callPill" class="call-pill is-hidden">
+          <button id="videoCallBtn" class="pill-btn" title="تماس تصویری" aria-label="تماس تصویری">
+            <svg viewBox="0 0 24 24" width="19" height="19"><path fill="currentColor" d="M4 6h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Zm14 4.5 4-2.5v8l-4-2.5z"/></svg>
+          </button>
+          <button id="callBtn" class="pill-btn" title="تماس صوتی" aria-label="تماس صوتی">
+            <svg viewBox="0 0 24 24" width="19" height="19"><path fill="currentColor" d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25c1.1.37 2.3.57 3.5.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.2.2 2.4.57 3.5a1 1 0 0 1-.25 1z"/></svg>
+          </button>
+        </div>
         <button id="chatInfoBtn" class="icon-btn" aria-label="اطلاعات گفتگو">
           <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M11 7h2v2h-2zm0 4h2v6h-2zm1-9a10 10 0 1 0 0 20 10 10 0 0 0 0-20Z"/></svg>
         </button>

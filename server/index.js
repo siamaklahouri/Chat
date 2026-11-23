@@ -52,15 +52,6 @@ const CLIENT_BUILT_AT = (() => {
   return newest || null;
 })();
 
-/**
- * نوشته‌ای که پایین ستون گفتگوها به کاربر نشان داده می‌شود.
- * فقط یک اطلاع‌رسانی است و خودش چیزی را پاک نمی‌کند؛ پاکسازی از پنل مدیریت
- * انجام می‌شود. برای عوض کردن متن یا برداشتنش RETENTION_NOTICE را ست کنید
- * (رشته‌ی خالی یعنی چیزی نشان داده نشود).
- */
-const RETENTION_NOTICE =
-  process.env.RETENTION_NOTICE ?? 'پیام‌ها و عکس‌ها به‌صورت دوره‌ای پاک می‌شوند';
-
 // آپلودهای نیمه‌کاره‌ی قبل از ریستارت هیچ‌وقت کامل نمی‌شوند؛ جایشان را
 // بی‌دلیل روی دیسک نگه نداریم.
 sweepIncoming();
@@ -129,7 +120,6 @@ app.get('/api/health', (req, res) => {
     maxImageBytes: MAX_IMAGE_BYTES,
     maxVoiceBytes: MAX_VOICE_BYTES,
     cleanup: { auto: wipeStatus().auto },
-    retentionNotice: RETENTION_NOTICE,
   });
 });
 

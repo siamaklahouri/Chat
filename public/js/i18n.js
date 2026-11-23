@@ -361,6 +361,11 @@
     /* --- استوری و ایموجی --- */
     'ایموجی': 'Emoji',
     'گفتگو': 'Chat',
+    'گفتگوها': 'Chats',
+    'تماس': 'Calls',
+    'تنظیمات': 'Settings',
+    'بخش‌های برنامه': 'App sections',
+    'هنوز تماسی نگرفته‌اید.': 'No calls yet.',
     'استوری من': 'My story',
     'افزودن': 'Add',
     '👁 هنوز کسی ندیده': '👁 No views yet',
@@ -412,8 +417,6 @@
     'دانلود': 'Download',
     'تعویض دوربین جلو و عقب': 'Switch front/back camera',
     'پایان تماس': 'End call',
-    'پیام‌ها و عکس‌ها به‌صورت دوره‌ای پاک می‌شوند':
-      'Messages and photos are cleared from time to time',
   };
 
   const DICT = { fa: null, en: EN };

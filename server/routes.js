@@ -351,6 +351,11 @@ router.get('/avatars/:id', fileAuth, (req, res) => {
  * فقط کسانی می‌بینندش که دست‌کم یک گفتگوی مشترک با فرستنده دارند — همان
  * قاعده‌ای که برای پیدا کردن کاربر و دیدن عکس پروفایل داریم.
  */
+/** تاریخچه‌ی تماس‌ها، برای تبِ «تماس». */
+router.get('/calls', requireApproved, (req, res) => {
+  res.json({ calls: store.listCallsFor(req.user.id) });
+});
+
 router.get('/stories', requireApproved, (req, res) => {
   res.json({ stories: store.listStoriesFor(req.user.id) });
 });

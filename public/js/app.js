@@ -32,6 +32,7 @@
     activeId: null,
     messages: [],
     hasMore: false,
+    tab: 'chats',
     loadingMore: false,
     replyTo: null,
     editing: null,
@@ -689,8 +690,8 @@
     $('chatStatus').textContent = chatStatusText(conv);
     // تماس فقط در گفتگوی دونفره، و فقط اگر سرور TURN تنظیم شده باشد.
     const callable = state.callEnabled && conv.type === 'direct' && Boolean(conv.peer);
-    $('callBtn').classList.toggle('is-hidden', !callable);
-    $('videoCallBtn').classList.toggle('is-hidden', !callable);
+    // دو دکمه داخل یک کپسول‌اند، پس با هم پنهان و نمایان می‌شوند.
+    $('callPill').classList.toggle('is-hidden', !callable);
   }
 
   /**
@@ -3359,7 +3360,12 @@
   }
 
   function profileModal() {
-    openModal(t('پروفایل'), (body) => {
+    openModal(t('پروفایل'), (body) => buildProfile(body));
+  }
+
+  /** همان محتوای پروفایل؛ یک‌بار نوشته می‌شود، دو جا می‌نشیند. */
+  function buildProfile(body) {
+    {
       const photo = avatarEditor();
       const name = document.createElement('input');
       name.value = state.me.displayName;
@@ -3466,7 +3472,7 @@
         sectionTitle(t('درباره‌ی برنامه')),
         aboutSection()
       );
-    });
+    }
   }
 
   /** نام و عکس گروه — فقط برای سازنده. */
@@ -3825,9 +3831,6 @@
   async function showWipeInfo() {
     try {
       const health = await fetch('/api/health').then((r) => r.json());
-      // متن از سرور می‌آید؛ اگر همان پیش‌فرض باشد ترجمه‌اش را داریم، و اگر
-      // مدیر متن دلخواهی گذاشته باشد t() همان را دست‌نخورده برمی‌گرداند.
-      $('wipeInfo').textContent = health.retentionNotice ? t(health.retentionNotice) : '';
     } catch {
       /* نمایش این اطلاعات اختیاری است */
     }
@@ -3920,6 +3923,9 @@
   });
 
   $('themeBtn').addEventListener('click', appearanceModal);
+  for (const button of $('tabBar').querySelectorAll('.tab-item')) {
+    button.addEventListener('click', () => showTab(button.dataset.tab));
+  }
   $('newChatBtn').addEventListener('click', newChatModal);
   $('profileBtn').addEventListener('click', profileModal);
   $('chatInfoBtn').addEventListener('click', chatInfoModal);
@@ -4087,6 +4093,127 @@
     }
 
     strip.classList.remove('is-hidden');
+    renderStoriesPage();
+  }
+
+  /** همان استوری‌ها، این بار به‌صورت صفحه‌ی کامل در تبِ خودش. */
+  function renderStoriesPage() {
+    const grid = $('storiesGrid');
+    grid.innerHTML = '';
+    const groups = state.stories || [];
+    const mine = groups.find((g) => g.mine);
+
+    const card = (user, { unseen = false, label, onClick }) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = `story-card${unseen ? ' is-unseen' : ''}`;
+      const avatar = document.createElement('span');
+      avatar.className = 'avatar';
+      paintAvatar(avatar, user.displayName, user.avatarColor, false, user.avatarUrl);
+      const name = document.createElement('span');
+      name.className = 'story-card-name';
+      name.textContent = label;
+      button.append(avatar, name);
+      button.addEventListener('click', onClick);
+      grid.appendChild(button);
+    };
+
+    card(state.me, {
+      label: mine ? t('استوری من') : t('افزودن'),
+      onClick: () => (mine ? openStories(groups.indexOf(mine)) : $('storyInput').click()),
+    });
+    for (const group of groups) {
+      if (group.mine) continue;
+      card(group.user, {
+        unseen: !group.allSeen,
+        label: group.user.displayName,
+        onClick: () => openStories(groups.indexOf(group)),
+      });
+    }
+  }
+
+  /* ------------------------------ تب‌ها ------------------------------ */
+
+  /**
+   * چهار بخشِ برنامه. هر بار فقط یکی دیده می‌شود؛ محتوای تبِ تماس و
+   * تنظیمات تنبل ساخته می‌شود، چون بیشتر کاربرها سراغشان نمی‌روند.
+   */
+  const TABS = ['chats', 'stories', 'calls', 'settings'];
+  const PAGE_OF = {
+    chats: 'chatsPage',
+    stories: 'storiesPage',
+    calls: 'callsPage',
+    settings: 'settingsPage',
+  };
+
+  function showTab(name) {
+    const tab = TABS.includes(name) ? name : 'chats';
+    state.tab = tab;
+    for (const id of TABS) $(PAGE_OF[id]).classList.toggle('is-hidden', id !== tab);
+    for (const button of $('tabBar').querySelectorAll('.tab-item')) {
+      const active = button.dataset.tab === tab;
+      button.classList.toggle('is-active', active);
+      if (active) button.setAttribute('aria-current', 'page');
+      else button.removeAttribute('aria-current');
+    }
+    if (tab === 'calls') renderCallsPage();
+    if (tab === 'settings') {
+      // هر بار از نو ساخته می‌شود تا فهرست دستگاه‌ها و بلاک‌شده‌ها تازه باشد.
+      $('settingsBody').innerHTML = '';
+      buildProfile($('settingsBody'));
+    }
+  }
+
+  /* ------------------------------ تماس‌ها ------------------------------ */
+
+  async function renderCallsPage() {
+    const list = $('callsList');
+    list.innerHTML = '';
+    list.appendChild(emptyNote(t('در حال بارگذاری…')));
+    let calls = [];
+    try {
+      calls = (await api('/calls')).calls;
+    } catch {
+      calls = [];
+    }
+    list.innerHTML = '';
+    if (calls.length === 0) {
+      list.appendChild(emptyNote(t('هنوز تماسی نگرفته‌اید.')));
+      return;
+    }
+    for (const call of calls) {
+      const conv = call.conversation;
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'call-row';
+
+      const avatar = document.createElement('span');
+      avatar.className = 'avatar';
+      paintAvatar(avatar, conv.title, conv.avatarColor, conv.online, conv.avatarUrl);
+
+      const main = document.createElement('div');
+      main.className = 'call-main';
+      const name = document.createElement('strong');
+      name.textContent = conv.title;
+      const kind = document.createElement('span');
+      const video = call.body.startsWith('video-');
+      const status = video ? call.body.slice(6) : call.body;
+      // «بی‌پاسخ» و «رد شده» قرمز می‌شوند، مثل هر دفترچه‌ی تماس.
+      kind.className = `call-kind${status === 'ended' ? '' : ' is-missed'}`;
+      kind.textContent = `${video ? '📹' : '📞'} ${callRecordText(call)}`;
+      main.append(name, kind);
+
+      const when = document.createElement('span');
+      when.className = 'call-when';
+      when.textContent = relativeTime(call.createdAt);
+
+      row.append(avatar, main, when);
+      row.addEventListener('click', () => {
+        showTab('chats');
+        openConversation(conv.id);
+      });
+      list.appendChild(row);
+    }
   }
 
   /* --- نمای تمام‌صفحه --- */

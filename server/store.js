@@ -445,6 +445,27 @@ function listMessages(conversationId, { before, limit = 40, viewerId = null } = 
   return rows.reverse().map(publicMessage);
 }
 
+/**
+ * تاریخچه‌ی تماس‌های این کاربر، از همه‌ی گفتگوهایش.
+ *
+ * رکورد تماس خودش یک پیام با kind='call' است، پس جدول تازه‌ای لازم نیست.
+ * پیام‌هایی که کاربر گفتگو را برایشان پاک کرده برنمی‌گردند، مثل هر پیام دیگر.
+ */
+function listCallsFor(viewerId, limit = 60) {
+  const rows = db
+    .prepare(
+      `${MESSAGE_SELECT}
+       JOIN members mem ON mem.conversation_id = m.conversation_id AND mem.user_id = ?
+       WHERE m.kind = 'call' AND m.id > mem.cleared_up_to_id AND m.deleted_at IS NULL
+       ORDER BY m.id DESC LIMIT ?`
+    )
+    .all(viewerId, limit);
+  return rows.map((row) => ({
+    ...publicMessage(row),
+    conversation: conversationView(row.conversation_id, viewerId),
+  }));
+}
+
 function getMessage(id) {
   const row = db.prepare(`${MESSAGE_SELECT} WHERE m.id = ?`).get(id);
   return row ? publicMessage(row) : null;
@@ -834,6 +855,7 @@ module.exports = {
   conversationView,
   listConversations,
   listMessages,
+  listCallsFor,
   getMessage,
   createMessage,
   editMessage,
