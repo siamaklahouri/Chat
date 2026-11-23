@@ -619,7 +619,31 @@
    * هم فهرست کاملِ تبِ «گفتگوها» را می‌سازد و هم نتیجه‌ی تبِ «جستجو» را.
    * یک تابع، چون هر دو دقیقاً یک ردیف را نشان می‌دهند.
    */
+  /**
+   * شمارنده‌ی خوانده‌نشده روی تبِ گفتگوها. بدون این، وقتی کاربر در تبِ
+   * تماس یا تنظیمات است هیچ نشانه‌ای از پیام تازه نمی‌بیند.
+   * گفتگوی بی‌صدا شمرده نمی‌شود — همان قراری که با بی‌صدا کردن گذاشته.
+   */
+  function renderTabBadge() {
+    const total = [...state.conversations.values()]
+      .filter((conv) => !conv.muted)
+      .reduce((sum, conv) => sum + (conv.unread || 0), 0);
+    const tab = $('tabBar').querySelector('.tab-item[data-tab="chats"]');
+    let badge = tab.querySelector('.tab-badge');
+    if (!total) {
+      badge?.remove();
+      return;
+    }
+    if (!badge) {
+      badge = document.createElement('span');
+      badge.className = 'tab-badge';
+      tab.appendChild(badge);
+    }
+    badge.textContent = total > 99 ? '۹۹+' : fa(total);
+  }
+
   function renderConversations() {
+    renderTabBadge();
     drawConversations($('conversationList'), '');
     if (state.tab === 'search') drawConversations($('searchResults'), state.filter);
   }

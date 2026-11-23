@@ -554,7 +554,8 @@ a.hint { text-decoration: none; }
 
 /* دکمه‌های نوار بالا باید «دکمه» دیده شوند، نه نقاشیِ شناور. */
 .sidebar-header .icon-btn {
-  width: 38px; height: 38px; border-radius: 12px;
+  /* ۴۴ پیکسل کمینه‌ی چیزی است که انگشت مطمئن می‌زند. */
+  width: 44px; height: 44px; border-radius: 13px;
   background: color-mix(in srgb, var(--bg-3) 70%, transparent);
   border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
   color: var(--text);
@@ -1507,12 +1508,15 @@ html[dir='rtl'] #backBtn svg { transform: scaleX(-1); }
   --tab-line: rgba(255, 255, 255, .14);
   --tab-hi: rgba(255, 255, 255, .22);
   --tab-shadow: 0 10px 34px rgba(0, 0, 0, .45);
+  /* رنگِ خامِ لهجه روی نوار تیره کنتراست ۲.۸۱ می‌داد؛ روشن‌ترش می‌کنیم. */
+  --tab-active: color-mix(in srgb, var(--accent) 42%, #fff);
 }
 :root[data-theme='light'] {
   --tab-glass: rgba(255, 255, 255, .6);
   --tab-line: rgba(15, 23, 42, .1);
   --tab-hi: rgba(255, 255, 255, .95);
   --tab-shadow: 0 10px 30px rgba(15, 23, 42, .16);
+  --tab-active: var(--accent-2);
 }
 @media (prefers-color-scheme: light) {
   :root:not([data-theme='dark']) {
@@ -1520,6 +1524,7 @@ html[dir='rtl'] #backBtn svg { transform: scaleX(-1); }
     --tab-line: rgba(15, 23, 42, .1);
     --tab-hi: rgba(255, 255, 255, .95);
     --tab-shadow: 0 10px 30px rgba(15, 23, 42, .16);
+    --tab-active: var(--accent-2);
   }
 }
 
@@ -1549,7 +1554,18 @@ html[dir='rtl'] #backBtn svg { transform: scaleX(-1); }
   line-height: 1; max-width: 100%; padding: 0 2px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.tab-item.is-active { color: var(--accent); }
+.tab-item.is-active { color: var(--tab-active); }
+
+/* شمارنده‌ی خوانده‌نشده، روی گوشه‌ی آیکونِ تبِ گفتگوها */
+.tab-item { position: relative; }
+.tab-badge {
+  position: absolute; top: 8px; inset-inline-end: calc(50% - 22px);
+  min-width: 17px; height: 17px; padding: 0 5px;
+  border-radius: 999px; background: var(--danger); color: #fff;
+  font-size: 10px; font-weight: 700; line-height: 17px; text-align: center;
+  border: 2px solid color-mix(in srgb, var(--tab-glass) 100%, transparent);
+  box-shadow: 0 0 0 1px var(--tab-line);
+}
 .tab-item:active { transform: scale(.93); }
 @media (prefers-reduced-motion: reduce) { .tab-item:active { transform: none; } }
 
@@ -1608,7 +1624,12 @@ html[dir='rtl'] #backBtn svg { transform: scaleX(-1); }
 .call-when { font-size: 12px; color: var(--muted); flex: none; }
 
 /* ----- تبِ تنظیمات ----- */
-.settings-body { flex: 1; overflow-y: auto; padding: 12px 14px; display: grid; gap: 12px; }
+/* padding کوتاه‌نویس ننویسید: فاصله‌ی پایین را قاعده‌ی مشترکِ بالاتر
+   می‌دهد تا آخرین بخش زیر نوار شناور گم نشود. */
+.settings-body {
+  flex: 1; overflow-y: auto; display: grid; gap: 12px;
+  padding-top: 12px; padding-inline: 14px;
+}
 
 /* ----- کپسول تماس در سربرگ گفتگو ----- */
 .call-pill {
@@ -1618,7 +1639,7 @@ html[dir='rtl'] #backBtn svg { transform: scaleX(-1); }
   border: 1px solid var(--glass-line);
 }
 .pill-btn {
-  width: 40px; height: 34px; border: 0; background: transparent;
+  width: 46px; height: 44px; border: 0; background: transparent;
   color: var(--text); display: grid; place-items: center;
 }
 .pill-btn + .pill-btn { box-shadow: inset 1px 0 0 var(--glass-line); }
@@ -1637,3 +1658,18 @@ html[dir='rtl'] .pill-btn + .pill-btn { box-shadow: inset -1px 0 0 var(--glass-l
    است و SwipeRefreshLayout بومیِ اپ با هر کشیدن به پایین صفحه را از نو بار
    می‌کند. توضیح کامل کنار parkScroll در app.js. */
 .in-android-app body::after { content: ''; display: block; height: 1px; }
+
+/* ------------------------ اندازه‌ی هدفِ لمس ------------------------
+   زیر ۴۴ پیکسل، انگشت به‌جای دکمه کنارش را می‌زند. آیکون‌ها همان اندازه
+   می‌مانند؛ فقط ناحیه‌ی لمس بزرگ می‌شود. */
+.modal-header .icon-btn,
+.chat-header .icon-btn,
+.composer .icon-btn,
+.record-bar .icon-btn,
+.reveal-password { min-width: 44px; min-height: 44px; }
+/* نمونه‌ی رنگ: دایره همان اندازه می‌ماند، ناحیه‌ی لمس بزرگ می‌شود. */
+.swatch { width: 44px; height: 44px; border-width: 3px; }
+.chat-header .icon-btn { width: 44px; height: 44px; }
+#forgotPassword { display: block; padding: 12px 4px; }
+.modal-body .btn, .settings-body .btn { min-height: 44px; }
+.handle-actions .btn, .device-row .btn { min-height: 40px; }
