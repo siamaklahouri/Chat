@@ -64,6 +64,14 @@
   const fa = (n) => i18n.num(n);
   const initials = (name) => (name || '?').trim().charAt(0).toUpperCase();
 
+  /** وضعیت اتصال در نوار بالا: متن، به‌علاوه‌ی رنگِ نقطه‌ی کنارش. */
+  function setConnectionState(text, mode) {
+    const el = $('connectionState');
+    el.textContent = text;
+    el.classList.toggle('is-online', mode === 'is-online');
+    el.classList.toggle('is-off', mode === 'is-off');
+  }
+
   /** پیام کوتاهِ «چیزی اینجا نیست». متن همیشه به‌صورت textContent می‌نشیند. */
   function emptyNote(text, className = 'empty-list') {
     const p = document.createElement('p');
@@ -1908,7 +1916,7 @@
 
     socket.addEventListener('open', () => {
       state.reconnectDelay = 1000;
-      $('connectionState').textContent = t('آنلاین');
+      setConnectionState(t('آنلاین'), 'is-online');
       // توکن فایل ۲۴ ساعته است؛ با هر اتصال تازه‌اش می‌کنیم تا عکس‌ها در
       // نشست‌های طولانی از کار نیفتند.
       api('/me')
@@ -1929,7 +1937,7 @@
     });
 
     socket.addEventListener('close', (event) => {
-      $('connectionState').textContent = t('قطع — تلاش برای اتصال…');
+      setConnectionState(t('قطع — تلاش برای اتصال…'), 'is-off');
       // بدون سوکت، سیگنالینگ تماس هم از کار می‌افتد.
       if (state.call) teardownCall(t('ارتباط قطع شد'));
       if (event.code === 4001) return signOut(t('نشست شما منقضی شده است. دوباره وارد شوید.'));

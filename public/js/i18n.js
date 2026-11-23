@@ -423,8 +423,8 @@
     }
   };
 
-  /* پیش‌فرض انگلیسی است. انتخاب خودِ کاربر همیشه مقدم است. */
-  const DEFAULT_LANG = 'en';
+  /* پیش‌فرض فارسی است. انتخاب خودِ کاربر همیشه مقدم است. */
+  const DEFAULT_LANG = 'fa';
 
   const detect = () => {
     const saved = stored();

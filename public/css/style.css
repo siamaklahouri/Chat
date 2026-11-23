@@ -104,6 +104,18 @@
     --wash: rgba(15, 23, 42, .06);
     --wash-strong: rgba(15, 23, 42, .13);
     --wall-scrim: rgba(255, 255, 255, .55);
+    --glass: rgba(255, 255, 255, .62);
+    --glass-soft: rgba(255, 255, 255, .45);
+    --glass-line: rgba(15, 23, 42, .1);
+    --glass-hi: rgba(255, 255, 255, .75);
+    --glass-shadow: 0 10px 30px rgba(15, 23, 42, .12);
+    --scrim: rgba(15, 23, 42, .24);
+  --glass: rgba(255, 255, 255, .62);
+  --glass-soft: rgba(255, 255, 255, .45);
+  --glass-line: rgba(15, 23, 42, .1);
+  --glass-hi: rgba(255, 255, 255, .75);
+  --glass-shadow: 0 10px 30px rgba(15, 23, 42, .12);
+  --scrim: rgba(15, 23, 42, .24);
     --auth-glow: color-mix(in srgb, var(--accent) 14%, #fff);
     --list-glow: color-mix(in srgb, var(--accent) 10%, transparent);
     --shadow: rgba(15, 23, 42, .12);
@@ -131,6 +143,12 @@
   --wash: rgba(15, 23, 42, .06);
   --wash-strong: rgba(15, 23, 42, .13);
   --wall-scrim: rgba(255, 255, 255, .55);
+  --glass: rgba(255, 255, 255, .62);
+  --glass-soft: rgba(255, 255, 255, .45);
+  --glass-line: rgba(15, 23, 42, .1);
+  --glass-hi: rgba(255, 255, 255, .75);
+  --glass-shadow: 0 10px 30px rgba(15, 23, 42, .12);
+  --scrim: rgba(15, 23, 42, .24);
   --auth-glow: color-mix(in srgb, var(--accent) 14%, #fff);
   --list-glow: color-mix(in srgb, var(--accent) 10%, transparent);
   --shadow: rgba(15, 23, 42, .12);
@@ -175,6 +193,18 @@
   --wall-pos: 0 0;
   --wall-repeat: repeat;
   --wall-scrim: rgba(8, 12, 18, .5);
+
+  /* ---- شیشه‌ی مایع ----
+     هر سطحِ شناور نیم‌شفاف است، پشتش محو می‌شود و یک خطِ نوری در لبه‌ی
+     بالایش می‌نشیند. همان سه چیزی که به چشم «شیشه» می‌آید:
+     شفافیت، محو شدنِ پشت، و بازتاب لبه. */
+  --glass: rgba(16, 23, 34, .58);
+  --glass-soft: rgba(18, 26, 37, .38);
+  --glass-line: rgba(255, 255, 255, .1);
+  --glass-hi: rgba(255, 255, 255, .14);
+  --glass-blur: blur(22px) saturate(160%);
+  --glass-shadow: 0 10px 30px rgba(0, 0, 0, .35);
+  --scrim: rgba(2, 6, 14, .45);
 }
 
 [data-wall='aurora'] { --wall: var(--wall-aurora); --wall-size: auto; }
@@ -199,9 +229,59 @@
 html, body {
   margin: 0;
   height: 100%;
-  background: var(--bg);
   color: var(--text);
   overscroll-behavior: none;
+}
+
+/* لایه‌ی رنگیِ پشتِ همه‌چیز؛ سطح‌های شیشه‌ای همین را محو می‌کنند. بدون آن،
+   شیشه روی رنگِ تخت هیچ فرقی با رنگِ تخت ندارد.
+   مستقیم روی body می‌نشیند، نه روی ::before با z-index منفی: چنین لایه‌ای
+   *زیر* پس‌زمینه‌ی خودِ body نقاشی می‌شود و هیچ‌وقت دیده نمی‌شود. */
+html { background: var(--bg); }
+body {
+  background:
+    radial-gradient(95% 55% at 95% -12%, color-mix(in srgb, var(--accent) 55%, transparent), transparent 78%),
+    radial-gradient(90% 50% at -12% 22%, color-mix(in srgb, var(--brand-dot) 30%, transparent), transparent 78%),
+    radial-gradient(95% 48% at 100% 62%, color-mix(in srgb, var(--accent) 30%, transparent), transparent 78%),
+    radial-gradient(110% 55% at 25% 112%, color-mix(in srgb, var(--accent) 42%, transparent), transparent 78%),
+    var(--bg);
+  background-attachment: fixed;
+}
+
+/* ------------------------------ شیشه ------------------------------
+   یک کلاس، همه‌جا. سطحِ شیشه‌ای نیم‌شفاف است، پشتش را محو می‌کند و یک خطِ
+   نوری در لبه‌ی بالا دارد. */
+.glass {
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: inset 0 1px 0 var(--glass-hi);
+}
+
+/* مرورگری که backdrop-filter ندارد نباید متنِ روی زمینه‌ی نیم‌شفاف و
+   محونشده ببیند؛ آنجا سطح‌ها همان رنگِ توپر قبلی را می‌گیرند. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass,
+  .sidebar,
+  .sidebar-header,
+  .chat-header,
+  .composer,
+  .record-bar,
+  .select-bar,
+  .story-strip,
+  .toast,
+  .modal,
+  .reaction-picker,
+  .search-row input,
+  .composer textarea {
+    background: var(--bg-2);
+    box-shadow: none;
+  }
+  .search-row input, .composer textarea { background: var(--bg-3); }
+  /* سربرگ ستون، گرادیانِ رنگی‌اش را نگه می‌دارد. */
+  .sidebar-header {
+    background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 10%, var(--bg-2)), var(--bg-2));
+  }
 }
 
 body { font-size: 15px; line-height: 1.6; }
@@ -342,20 +422,65 @@ a.hint { text-decoration: none; }
 
 .sidebar {
   display: flex; flex-direction: column;
-  border-inline-end: 1px solid var(--line);
-  background: var(--bg-2);
+  border-inline-end: 1px solid var(--glass-line);
+  /* بدون backdrop-filter: پشتِ این ستون فقط گرادیانِ نرمِ body است و محو
+     کردنش هیچ تغییری در تصویر نمی‌دهد، ولی روی هر فریم GPU می‌خورد. شیشه
+     را جایی می‌گذاریم که پشتش جزئیات باشد: سربرگ‌ها، نوار نوشتن، پنجره‌ها. */
+  background: var(--glass-soft);
   min-height: 0;
 }
 
 .sidebar-header {
   display: flex; align-items: center; gap: 10px;
-  padding: calc(10px + var(--safe-top)) 14px 12px;
+  padding: calc(10px + var(--safe-top)) 12px 11px;
   border-bottom: 1px solid var(--line);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 10%, var(--bg-2)), var(--bg-2));
+  /* رنگِ لهجه از بالا می‌تابد و پایین محو می‌شود، تا نوار یک سطح جدا از
+     فهرست به نظر برسد نه ادامه‌ی آن. */
+  background:
+    radial-gradient(120% 140% at 85% -40%, color-mix(in srgb, var(--accent) 26%, transparent), transparent 70%),
+    var(--glass);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: inset 0 1px 0 var(--glass-hi);
+  border-bottom-color: var(--glass-line);
+  position: relative; z-index: 3;
 }
-.sidebar-title strong { font-size: 16px; }
-.sidebar-title { flex: 1; min-width: 0; line-height: 1.3; }
-.sidebar-title strong { display: block; font-size: 15px; }
+
+.sidebar-title { flex: 1; min-width: 0; line-height: 1.25; }
+.sidebar-title strong {
+  display: block; font-size: 15.5px; font-weight: 700;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* وضعیت اتصال با یک نقطه‌ی رنگی، نه فقط متن خاکستری: از گوشه‌ی چشم هم
+   معلوم است که برنامه وصل است یا نه. */
+.conn { display: flex; align-items: center; gap: 5px; font-size: 12px; }
+.conn::before {
+  content: ''; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--muted); flex: none;
+}
+.conn.is-online { color: var(--ok-soft); }
+.conn.is-online::before { background: var(--ok); }
+.conn.is-off { color: var(--danger-soft); }
+.conn.is-off::before { background: var(--danger); }
+
+/* دکمه‌های نوار بالا باید «دکمه» دیده شوند، نه نقاشیِ شناور. */
+.sidebar-header .icon-btn {
+  width: 38px; height: 38px; border-radius: 12px;
+  background: color-mix(in srgb, var(--bg-3) 70%, transparent);
+  border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+  color: var(--text);
+}
+.sidebar-header .icon-btn:active {
+  background: var(--line);
+}
+/* «گفتگوی جدید» کار اصلیِ این نوار است، پس تنها دکمه‌ی پررنگ همان است. */
+.sidebar-header #newChatBtn {
+  background: var(--accent); border-color: transparent; color: #fff;
+}
+.sidebar-header #newChatBtn:active { background: var(--accent-2); }
+
+.sidebar-header .avatar { width: 44px; height: 44px; font-size: 16px; }
 .sidebar-footer {
   padding: 8px 12px calc(8px + var(--safe-bottom));
   border-top: 1px solid var(--line);
@@ -390,7 +515,7 @@ a.hint { text-decoration: none; }
   width: 30px; height: 30px; border-radius: 8px; flex: none;
 }
 .row-remove:hover { background: rgba(239, 68, 68, .14); color: var(--danger-soft); }
-.avatar-btn { border: 0; background: none; padding: 0; }
+.avatar-btn { border: 0; background: none; padding: 0; border-radius: 50%; }
 .avatar.online::after {
   content: ''; position: absolute; inset-inline-end: 0; bottom: 0;
   width: 11px; height: 11px; border-radius: 50%;
@@ -428,7 +553,7 @@ a.hint { text-decoration: none; }
 .search-row { padding: 8px 12px 6px; position: relative; }
 .search-row input {
   padding-block: 8px; border-radius: 12px; font-size: 14px;
-  background: var(--bg-3);
+  background: var(--glass-soft); border-color: var(--glass-line);
 }
 .search-row svg {
   position: absolute; inset-inline-start: 24px; top: 50%;
@@ -508,6 +633,8 @@ html[dir='rtl'] .conversation.is-active { box-shadow: inset -3px 0 0 var(--accen
 .reaction span { font-variant-numeric: tabular-nums; }
 
 .reaction-picker {
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
   display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
 }
 .reaction-picker button {
@@ -533,7 +660,10 @@ html[dir='rtl'] .conversation.is-active { box-shadow: inset -3px 0 0 var(--accen
 .chat-header {
   display: flex; align-items: center; gap: 10px;
   padding: calc(8px + var(--safe-top)) 12px 8px;
-  border-bottom: 1px solid var(--line); background: var(--bg-2);
+  border-bottom: 1px solid var(--glass-line); background: var(--glass);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: inset 0 1px 0 var(--glass-hi);
   /* سربرگ نباید با اسکرول پیام‌ها برود. */
   position: relative; z-index: 2;
 }
@@ -684,7 +814,9 @@ html[dir='rtl'] .conversation.is-active { box-shadow: inset -3px 0 0 var(--accen
 .record-bar {
   display: flex; align-items: center; gap: 10px;
   padding: 8px 10px calc(8px + var(--safe-bottom));
-  border-top: 1px solid var(--line); background: var(--bg-2);
+  border-top: 1px solid var(--glass-line); background: var(--glass);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
 }
 .record-time { font-variant-numeric: tabular-nums; font-size: 15px; font-weight: 600; }
 .record-hint { flex: 1; }
@@ -699,11 +831,15 @@ html[dir='rtl'] .conversation.is-active { box-shadow: inset -3px 0 0 var(--accen
 .jump-btn {
   position: absolute; inset-inline-end: 14px; bottom: 14px;
   width: 42px; height: 42px; border-radius: 50%;
-  border: 1px solid var(--line); background: var(--bg-3); color: var(--text);
+  border: 1px solid var(--glass-line); background: var(--glass); color: var(--text);
   display: grid; place-items: center; z-index: 5;
-  box-shadow: 0 8px 22px var(--shadow);
 }
 .jump-btn:active { background: var(--line); }
+.jump-btn {
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-hi);
+}
 .jump-badge {
   position: absolute; top: -6px; inset-inline-start: -6px;
   min-width: 20px; height: 20px; padding: 0 5px;
@@ -742,11 +878,15 @@ html[dir='rtl'] .conversation.is-active { box-shadow: inset -3px 0 0 var(--accen
 .composer {
   display: flex; align-items: flex-end; gap: 8px;
   padding: 8px 10px calc(8px + var(--safe-bottom));
-  border-top: 1px solid var(--line); background: var(--bg-2);
+  border-top: 1px solid var(--glass-line); background: var(--glass);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: inset 0 1px 0 var(--glass-hi);
+  position: relative; z-index: 2;
 }
 .composer textarea {
   flex: 1; resize: none; max-height: 132px;
-  background: var(--bg-3); border: 1px solid var(--line);
+  background: var(--glass-soft); border: 1px solid var(--glass-line);
   border-radius: 18px; padding: 10px 14px; outline: none;
 }
 .composer textarea:focus { border-color: var(--accent); }
@@ -765,11 +905,21 @@ html[dir='rtl'] #backBtn svg { transform: scaleX(-1); }
 
 .modal-root { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; padding: 16px; }
 .modal-handle { display: none; }
-.modal-backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, .6); }
+.modal-backdrop {
+  position: absolute; inset: 0;
+  /* کم‌رنگ‌تر از یک پرده‌ی معمولی، چون خودِ پنجره شیشه‌ای است و باید
+     صفحه‌ی پشتش دیده شود؛ محو کردن کار جدا کردن را می‌کند. */
+  background: var(--scrim);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
 .modal {
   position: relative; width: min(460px, 100%); max-height: 84dvh; overflow: hidden;
   display: flex; flex-direction: column;
-  background: var(--bg-2); border: 1px solid var(--line); border-radius: 18px;
+  background: var(--glass); border: 1px solid var(--glass-line); border-radius: 18px;
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-hi);
 }
 .modal-header {
   display: flex; align-items: center; justify-content: space-between;
@@ -815,9 +965,11 @@ html[dir='rtl'] #backBtn svg { transform: scaleX(-1); }
   /* بالاتر از نوار نوشتن می‌نشیند، وگرنه روی کادر تایپ می‌افتد. */
   position: fixed; bottom: calc(78px + var(--safe-bottom)); inset-inline: 0;
   margin-inline: auto; width: fit-content; max-width: 86%; z-index: 80;
-  background: var(--bg-3); border: 1px solid var(--line);
+  background: var(--glass); border: 1px solid var(--glass-line);
   border-radius: 999px; padding: 9px 18px; font-size: 13px;
-  box-shadow: 0 10px 30px var(--shadow);
+  box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-hi);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
 }
 .toast.error { border-color: rgba(239, 68, 68, .6); color: var(--danger-soft); }
 
@@ -1044,7 +1196,9 @@ html[dir='rtl'] #backBtn svg { transform: scaleX(-1); }
 .message-row.is-picked .bubble { outline: 2px solid var(--accent); outline-offset: 2px; }
 .select-bar {
   display: flex; align-items: center; gap: 10px;
-  padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--bg-2);
+  padding: 8px 12px; border-bottom: 1px solid var(--glass-line); background: var(--glass);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
 }
 .select-bar .count { flex: 1; font-weight: 600; font-size: 14px; }
 .select-bar .btn { padding: 7px 14px; font-size: 13px; }
@@ -1082,7 +1236,8 @@ html[dir='rtl'] #backBtn svg { transform: scaleX(-1); }
 .story-strip {
   display: flex; gap: 10px; overflow-x: auto; scrollbar-width: none;
   padding: 8px 12px 10px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--glass-line);
+  background: var(--glass-soft);
 }
 .story-strip::-webkit-scrollbar { display: none; }
 
