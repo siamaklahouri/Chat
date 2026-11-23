@@ -91,6 +91,11 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         setUpWebView()
+        // «کشیدن برای تازه‌سازی» خاموش است. در پیام‌رسان، اسکرول داخل فهرست‌ها
+        // و گفتگوست و خودِ WebView هیچ‌وقت از سرِ سند تکان نمی‌خورد، پس این
+        // حرکت با هر کشیدن به پایین اشتباهی فعال می‌شد و برنامه را از نو بار
+        // می‌کرد. صفحه خودش دکمه‌ی به‌روزرسانی دارد.
+        binding.swipeRefresh.isEnabled = false
         binding.swipeRefresh.setOnRefreshListener { binding.webView.reload() }
         binding.retryButton.setOnClickListener { loadApp() }
         binding.serverButton.setOnClickListener { askForServerUrl() }

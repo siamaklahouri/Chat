@@ -95,7 +95,14 @@ async function login(page, username) {
   await b.waitForSelector('#chatView:not(.is-hidden)');
 
   // دکمه‌ی تماس باید دیده شود
-  await a.waitForSelector('#callBtn:not(.is-hidden)', { timeout: 8000 });
+  // کپسول است که پنهان/نمایان می‌شود، نه تک‌تک دکمه‌ها؛ اگر فقط دکمه را
+  // چک کنیم، پنهان ماندنِ کپسول از زیر دست در می‌رود.
+  await a.waitForSelector('#callPill:not(.is-hidden)', { timeout: 8000 });
+  for (const id of ['callBtn', 'videoCallBtn']) {
+    const seen = await a.$eval(`#${id}`, (e) => e.getBoundingClientRect().width > 0);
+    if (!seen) throw new Error(`دکمه‌ی ${id} داخل کپسول دیده نمی‌شود`);
+  }
+  log('کپسول تماس و هر دو دکمه‌اش دیده می‌شوند ✔');
   log('دکمه‌ی تماس در سربرگ دیده می‌شود');
 
   // تماس
@@ -163,7 +170,7 @@ async function login(page, username) {
 
   /* ---------------------------- تماس تصویری ---------------------------- */
 
-  await a.waitForSelector('#videoCallBtn:not(.is-hidden)');
+  await a.waitForSelector('#callPill:not(.is-hidden)');
   await a.click('#videoCallBtn');
   await b.waitForSelector('#callAccept:not(.is-hidden)', { timeout: 8000 });
   log('زنگ تصویری روی دستگاه گیرنده:', await b.textContent('#callState'));

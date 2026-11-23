@@ -1632,3 +1632,8 @@ html[dir='rtl'] .pill-btn + .pill-btn { box-shadow: inset -1px 0 0 var(--glass-l
 
 /* نتیجه‌ی تبِ جستجو، همان ردیف‌های فهرست گفتگوها */
 .search-results { flex: 1; overflow-y: auto; }
+
+/* یک پیکسل فضای اضافه، فقط داخل اپ اندروید: بدون آن، سند همیشه در سرِ خودش
+   است و SwipeRefreshLayout بومیِ اپ با هر کشیدن به پایین صفحه را از نو بار
+   می‌کند. توضیح کامل کنار parkScroll در app.js. */
+.in-android-app body::after { content: ''; display: block; height: 1px; }

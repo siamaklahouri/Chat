@@ -421,6 +421,37 @@
   applyTheme(localStorage.getItem(THEME_KEY));
   applyAccent(storedAccent());
   applyWall(storedWall());
+
+  /**
+   * خنثی کردنِ «کشیدن برای تازه‌سازی» در اپ اندروید.
+   *
+   * اپ یک SwipeRefreshLayout بومی دور WebView دارد که webView.reload() صدا
+   * می‌زند؛ هیچ CSSای — از جمله overscroll-behavior — جلوی آن را نمی‌گیرد،
+   * چون اصلاً داخل صفحه اتفاق نمی‌افتد.
+   *
+   * آن کتابخانه فقط وقتی فعال می‌شود که بچه‌اش «نتواند بالاتر برود»، یعنی
+   * وقتی WebView در سرِ سند است. همه‌ی اسکرول‌های این برنامه داخل ظرف‌های
+   * خودشان است و خودِ سند همیشه روی صفر می‌ماند، برای همین همیشه فعال بود.
+   *
+   * پس سند را یک پیکسل بلندتر می‌کنیم و روی همان یک پیکسل پارکش می‌کنیم:
+   * از نگاه آن کتابخانه، WebView دیگر در سرِ سند نیست. چون ظرف‌های داخلی
+   * overscroll-behavior: contain دارند، کشیدنشان به سند سرایت نمی‌کند و
+   * این یک پیکسل سر جایش می‌ماند.
+   *
+   * فقط داخل اپ انجام می‌شود؛ در مرورگر همان overscroll-behavior کافی است.
+   */
+  if (window.AndroidBridge) {
+    document.documentElement.classList.add('in-android-app');
+    const parkScroll = () => {
+      if (window.scrollY === 0) window.scrollTo(0, 1);
+    };
+    parkScroll();
+    window.addEventListener('load', parkScroll);
+    window.addEventListener('resize', parkScroll);
+    window.addEventListener('orientationchange', parkScroll);
+    // اگر چیزی سند را به صفر برگرداند، دوباره پارکش می‌کنیم.
+    window.addEventListener('scroll', parkScroll, { passive: true });
+  }
   // متن‌های ثابتِ index.html هم باید به زبان انتخابی دربیایند.
   i18n.translateDom();
 
@@ -3842,14 +3873,6 @@
     $('adminLink').classList.toggle('is-hidden', !state.me.isAdmin);
   }
 
-  async function showWipeInfo() {
-    try {
-      const health = await fetch('/api/health').then((r) => r.json());
-    } catch {
-      /* نمایش این اطلاعات اختیاری است */
-    }
-  }
-
   async function startApp(user) {
     state.me = user;
     $('authScreen').classList.add('is-hidden');
@@ -3864,7 +3887,6 @@
       })
       .catch(() => {});
     connectSocket();
-    showWipeInfo();
     requestNotificationPermission();
   }
 
