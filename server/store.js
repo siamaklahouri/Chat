@@ -403,7 +403,28 @@ function conversationView(conversationId, viewerId) {
     pinned: Boolean(view.pinned_at),
     muted: Boolean(view.muted),
     archived: Boolean(view.archived),
+    // پیامِ سنجاق‌شده‌ی خودِ گفتگو — برای همه‌ی اعضا یکی است، برخلاف
+    // «سنجاق کردن گفتگو» که برای هر کس جداست.
+    pinnedMessage: pinnedMessageOf(conv, cleared),
   };
+}
+
+/** پیامِ سنجاق‌شده، اگر هنوز هست و این کاربر پاکش نکرده باشد. */
+function pinnedMessageOf(conv, cleared) {
+  if (!conv.pinned_message_id || conv.pinned_message_id <= cleared) return null;
+  const row = db.prepare(`${MESSAGE_SELECT} WHERE m.id = ?`).get(conv.pinned_message_id);
+  if (!row || row.deleted_at || row.conversation_id !== conv.id) return null;
+  return publicMessage(row);
+}
+
+/** سنجاق کردن یا برداشتنِ سنجاقِ یک پیام. پیام باید مالِ همین گفتگو باشد. */
+function setPinnedMessage(conversationId, messageId) {
+  if (messageId != null) {
+    const row = db.prepare('SELECT conversation_id, deleted_at FROM messages WHERE id = ?').get(messageId);
+    if (!row || row.deleted_at || row.conversation_id !== conversationId) return false;
+  }
+  db.prepare('UPDATE conversations SET pinned_message_id = ? WHERE id = ?').run(messageId, conversationId);
+  return true;
 }
 
 function listConversations(viewerId) {
@@ -464,6 +485,25 @@ function listCallsFor(viewerId, limit = 60) {
     ...publicMessage(row),
     conversation: conversationView(row.conversation_id, viewerId),
   }));
+}
+
+/**
+ * رسانه‌های یک گفتگو: عکس، فایل و پیام صوتی، تازه‌ترین اول.
+ * همان قاعده‌ی پیام‌ها: چیزی که کاربر پاک کرده برنمی‌گردد.
+ */
+function listMediaIn(conversationId, { viewerId, kind = null, limit = 60, before = null } = {}) {
+  const cleared = viewerId ? memberView(conversationId, viewerId).cleared_up_to_id : 0;
+  const kinds = kind === 'file' ? ['file'] : kind === 'voice' ? ['voice'] : ['image'];
+  const marks = kinds.map(() => '?').join(', ');
+  const rows = db
+    .prepare(
+      `${MESSAGE_SELECT}
+       WHERE m.conversation_id = ? AND m.kind IN (${marks}) AND m.deleted_at IS NULL
+         AND m.id > ? ${before ? 'AND m.id < ?' : ''}
+       ORDER BY m.id DESC LIMIT ?`
+    )
+    .all(conversationId, ...kinds, cleared, ...(before ? [before] : []), limit);
+  return rows.map(publicMessage);
 }
 
 function getMessage(id) {
@@ -856,6 +896,8 @@ module.exports = {
   listConversations,
   listMessages,
   listCallsFor,
+  listMediaIn,
+  setPinnedMessage,
   getMessage,
   createMessage,
   editMessage,

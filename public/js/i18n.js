@@ -360,6 +360,15 @@
 
     /* --- استوری و ایموجی --- */
     'ایموجی': 'Emoji',
+    '🖼 عکس‌ها و فایل‌ها': '🖼 Photos and files',
+    'عکس‌ها و فایل‌ها': 'Photos and files',
+    'سنجاق کردن پیام': 'Pin message',
+    'در این گفتگو نام شما برده شده': 'You were mentioned in this chat',
+    'برداشتن سنجاق پیام': 'Unpin message',
+    'پیام سنجاق شد.': 'Message pinned.',
+    'سنجاق پیام برداشته شد.': 'Message unpinned.',
+    'هنوز چیزی اینجا نیست.': 'Nothing here yet.',
+    'نمایش': 'Show',
     'گفتگو': 'Chat',
     'گفتگوها': 'Chats',
     'تماس': 'Calls',

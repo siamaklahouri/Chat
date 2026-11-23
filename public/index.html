@@ -204,6 +204,12 @@
         </button>
       </header>
 
+      <!-- پیام سنجاق‌شده‌ی گفتگو -->
+      <button id="pinnedBar" type="button" class="pinned-bar is-hidden">
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M16 3v2l-1 1v5l3 2v2h-5v6h-2v-6H6v-2l3-2V6L8 5V3z"/></svg>
+        <span id="pinnedText" class="pinned-text"></span>
+      </button>
+
       <!-- نوار حالت انتخاب چند پیام -->
       <div id="selectBar" class="select-bar is-hidden">
         <button id="cancelSelect" type="button" class="icon-btn" aria-label="لغو انتخاب">✕</button>
@@ -255,6 +261,8 @@
       </div>
 
       <form id="composer" class="composer">
+        <!-- فهرست تکمیلِ منشن، درست بالای کادر نوشتن -->
+        <div id="mentionBox" class="mention-box is-hidden"></div>
         <input id="imageInput" type="file" accept="image/*" multiple class="is-hidden" />
         <input id="fileInput" type="file" class="is-hidden" />
         <button id="attachBtn" type="button" class="icon-btn" title="پیوست" aria-label="پیوست عکس یا فایل">

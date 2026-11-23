@@ -22,6 +22,7 @@ const {
   SESSION_TTL_MS,
 } = require('./auth');
 const store = require('./store');
+const { preview } = require('./preview.js');
 const {
   sniff,
   sniffAudio,
@@ -351,6 +352,57 @@ router.get('/avatars/:id', fileAuth, (req, res) => {
  * فقط کسانی می‌بینندش که دست‌کم یک گفتگوی مشترک با فرستنده دارند — همان
  * قاعده‌ای که برای پیدا کردن کاربر و دیدن عکس پروفایل داریم.
  */
+/**
+ * سنجاق کردنِ یک پیام در بالای گفتگو. برای همه‌ی اعضا یکی است، پس در
+ * گروه فقط سازنده و مدیر گروه اجازه دارند؛ در گفتگوی دونفره هر دو طرف.
+ */
+router.post('/conversations/:id/pin', requireApproved, memberGuard, (req, res) => {
+  const conversation = store.getConversationRow(req.conversationId);
+  if (conversation.type === 'group' && !groupStaffGuard(req, res)) return undefined;
+
+  const raw = req.body?.messageId;
+  const messageId = raw == null ? null : Number(raw);
+  if (messageId != null && !Number.isInteger(messageId)) {
+    return fail(res, 400, 'پیام پیدا نشد.');
+  }
+  if (!store.setPinnedMessage(req.conversationId, messageId)) {
+    return fail(res, 404, 'پیام پیدا نشد.');
+  }
+  hub.sendToConversation(req.conversationId, { type: 'conversation:pin', conversationId: req.conversationId });
+  return res.json({ conversation: store.conversationView(req.conversationId, req.user.id) });
+});
+
+/** رسانه‌های یک گفتگو، برای گالری. فقط عضو خودِ گفتگو می‌بیند. */
+router.get('/conversations/:id/media', requireApproved, memberGuard, (req, res) => {
+  const kind = ['image', 'file', 'voice'].includes(req.query.kind) ? req.query.kind : 'image';
+  const before = Number(req.query.before) || null;
+  res.json({
+    media: store.listMediaIn(Number(req.params.id), { viewerId: req.user.id, kind, before }),
+  });
+});
+
+/**
+ * پیش‌نمایش لینک. تنها جایی است که سرور به دستور کاربر به بیرون وصل
+ * می‌شود، پس هم محدودِ کاربرِ واردشده است و هم سقف درخواست دارد.
+ */
+router.get(
+  '/preview',
+  requireApproved,
+  rateLimit({ windowMs: 60_000, max: 20, scope: 'preview', by: 'user', message: 'درخواست زیاد است.' }),
+  async (req, res) => {
+    try {
+      return res.json({ preview: await preview(String(req.query.url || '')) });
+    } catch {
+      // همیشه ۲۰۰ با مقدار خالی، نه خطا. دو دلیل:
+      // ۱) خیلی از لینک‌ها پیش‌نمایش ندارند؛ این حالتِ عادی است نه خطا، و
+      //    نباید در کنسولِ مرورگرِ کاربر ۴۰۴ بریزد.
+      // ۲) اگر «رد شد» با «پیدا نشد» فرق می‌کرد، می‌شد با همین تفاوت
+      //    فهمید کدام نشانی داخلی است و شبکه را نقشه‌برداری کرد.
+      return res.json({ preview: null });
+    }
+  }
+);
+
 /** تاریخچه‌ی تماس‌ها، برای تبِ «تماس». */
 router.get('/calls', requireApproved, (req, res) => {
   res.json({ calls: store.listCallsFor(req.user.id) });

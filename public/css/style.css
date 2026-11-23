@@ -1673,3 +1673,135 @@ html[dir='rtl'] .pill-btn + .pill-btn { box-shadow: inset -1px 0 0 var(--glass-l
 #forgotPassword { display: block; padding: 12px 4px; }
 .modal-body .btn, .settings-body .btn { min-height: 44px; }
 .handle-actions .btn, .device-row .btn { min-height: 40px; }
+
+/* ایموجیِ تنها: بزرگ و بدون حباب، مثل هر پیام‌رسانی */
+.bubble.jumbo {
+  background: none; border-color: transparent; box-shadow: none;
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+  padding: 2px 4px 0;
+}
+.bubble.jumbo .bubble-text { font-size: 44px; line-height: 1.15; }
+.bubble.jumbo .bubble-meta { padding-top: 2px; }
+
+/* «در حال نوشتن» در فهرست، تا از پیش‌نمایشِ معمولی جدا دیده شود */
+.conversation-preview.is-typing { color: var(--brand-dot); }
+
+/* --------------------------- سوایپ برای پاسخ ---------------------------
+   نشانِ پاسخ پشتِ پیام می‌نشیند و با کشیدنِ پیام ظاهر می‌شود. */
+.message-row { position: relative; }
+.message-row.is-swiping { transition: none; user-select: none; }
+.message-row:not(.is-swiping) { transition: transform .18s cubic-bezier(.2, .8, .2, 1); }
+
+.message-row::before {
+  content: '';
+  position: absolute; top: 50%; margin-top: -14px;
+  inset-inline-end: -40px;
+  width: 28px; height: 28px; border-radius: 50%;
+  background: var(--bg-3) center / 16px 16px no-repeat;
+  /* فلشِ پاسخ، به‌صورت تصویرِ درون‌خطی تا فایل تازه‌ای لازم نشود */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%238ea0b5' d='M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11Z'/%3E%3C/svg%3E");
+  opacity: 0; transform: scale(.6);
+  transition: opacity .12s ease, transform .12s ease;
+  pointer-events: none;
+}
+.message-row.is-swiping::before { opacity: .55; transform: scale(.85); }
+.message-row.swipe-armed::before { opacity: 1; transform: scale(1); }
+
+@media (prefers-reduced-motion: reduce) {
+  .message-row:not(.is-swiping) { transition: none; }
+  .message-row::before { transition: none; }
+}
+
+/* ------------------------ گالریِ رسانه‌های گفتگو ------------------------ */
+.media-area { min-height: 180px; }
+.media-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.media-cell {
+  aspect-ratio: 1; border: 0; padding: 0; border-radius: 10px;
+  overflow: hidden; background: var(--bg-3);
+}
+.media-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.media-cell:active { transform: scale(.96); }
+
+.media-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 10px; border: 1px solid var(--line); border-radius: 12px;
+  background: var(--bg-3);
+}
+.media-main { flex: 1; min-width: 0; line-height: 1.35; }
+.media-name {
+  display: block; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.media-row .btn { padding: 7px 12px; font-size: 13px; flex: none; min-height: 40px; }
+
+/* --------------------------- پیام سنجاق‌شده --------------------------- */
+.pinned-bar {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 8px 12px; border: 0; border-bottom: 1px solid var(--glass-line);
+  background: var(--glass); color: var(--text); text-align: start;
+  -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+  position: relative; z-index: 2; font-size: 13px;
+}
+.pinned-bar > svg { color: var(--accent); flex: none; }
+.pinned-text {
+  flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.pinned-bar:active { background: var(--bg-3); }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .pinned-bar { background: var(--bg-2); }
+}
+
+/* ------------------------------- منشن ------------------------------- */
+.mention {
+  color: var(--author); font-weight: 600;
+  /* @username همیشه لاتین است؛ جداسازی دوسویه نگذارد با متن فارسی قاتی شود. */
+  unicode-bidi: isolate;
+}
+.mention.is-me {
+  background: color-mix(in srgb, var(--accent) 26%, transparent);
+  border-radius: 6px; padding: 0 3px;
+}
+.mention-flag {
+  color: var(--accent); font-weight: 700; margin-inline-start: 5px; font-size: 13px;
+}
+
+/* فهرست تکمیل، درست بالای نوار نوشتن */
+.mention-box {
+  position: absolute; inset-inline: 10px; bottom: calc(100% + 6px);
+  z-index: 8; max-height: 232px; overflow-y: auto; overscroll-behavior: contain;
+  border: 1px solid var(--glass-line); border-radius: 14px;
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-shadow);
+}
+.mention-item {
+  display: flex; align-items: center; gap: 9px; width: 100%;
+  padding: 8px 10px; border: 0; background: transparent; color: inherit;
+  text-align: start; min-height: 44px;
+}
+.mention-item + .mention-item { box-shadow: inset 0 1px 0 var(--line); }
+.mention-item:active { background: var(--bg-3); }
+.mention-item .avatar { width: 30px; height: 30px; font-size: 12px; }
+.mention-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .mention-box { background: var(--bg-2); }
+}
+
+/* --------------------------- پیش‌نمایش لینک --------------------------- */
+.link-card {
+  display: block; margin: 6px 0 2px; padding: 8px 10px;
+  border-radius: 12px; text-decoration: none; color: inherit;
+  background: var(--bw); border-inline-start: 3px solid var(--accent);
+}
+.link-site { display: block; font-size: 11px; color: var(--on-bubble-soft); }
+.link-title {
+  display: block; font-weight: 600; font-size: 13.5px; line-height: 1.4;
+  margin-top: 1px;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.link-desc {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  font-size: 12.5px; color: var(--on-bubble-soft); margin-top: 2px; line-height: 1.5;
+}
+@media (hover: hover) { .link-card:hover { background: var(--bw2); } }
+.link-card:active { background: var(--bw2); }

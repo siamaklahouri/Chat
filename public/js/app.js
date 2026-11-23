@@ -569,7 +569,19 @@
 
   /* ------------------------------ گفتگوها ------------------------------ */
 
+  /** آیا کسی در این گفتگو دارد می‌نویسد؟ نامش را برمی‌گرداند. */
+  function typingNamesIn(conversationId) {
+    return [...state.typingPeers.values()]
+      .filter((event) => event.conversationId === conversationId)
+      .map((event) => event.displayName);
+  }
+
   function conversationSubtitle(conv) {
+    // «در حال نوشتن» از هر پیامی تازه‌تر است، پس جای پیش‌نمایش می‌نشیند.
+    const typing = typingNamesIn(conv.id);
+    if (typing.length > 0) {
+      return t('{names} در حال نوشتن…', { names: typing.join(t('، ')) });
+    }
     const message = conv.lastMessage;
     if (!message) return t('هنوز پیامی رد و بدل نشده');
     const prefix = message.senderId === state.me.id ? t('شما: ') : '';
@@ -714,7 +726,17 @@
       button.querySelector('.conversation-top small').textContent = conv.lastMessage
         ? timeText(conv.lastMessage.createdAt)
         : '';
-      button.querySelector('.conversation-preview').textContent = conversationSubtitle(conv);
+      const preview = button.querySelector('.conversation-preview');
+      preview.textContent = conversationSubtitle(conv);
+      // پیامی که مرا نام برده، از یک پیام معمولیِ خوانده‌نشده مهم‌تر است.
+      if (conv.unread > 0 && conv.lastMessage && mentionsMe(conv.lastMessage)) {
+        const at = document.createElement('span');
+        at.className = 'mention-flag';
+        at.textContent = '@';
+        at.title = t('در این گفتگو نام شما برده شده');
+        nameCell.appendChild(at);
+      }
+      preview.classList.toggle('is-typing', typingNamesIn(conv.id).length > 0);
       if (conv.unread > 0) {
         const badge = document.createElement('span');
         badge.className = 'badge';
@@ -758,6 +780,7 @@
     $('chatName').textContent = conv.title;
     $('chatStatus').textContent = chatStatusText(conv);
     // تماس فقط در گفتگوی دونفره، و فقط اگر سرور TURN تنظیم شده باشد.
+    renderPinnedBar(conv);
     const callable = state.callEnabled && conv.type === 'direct' && Boolean(conv.peer);
     // دو دکمه داخل یک کپسول‌اند، پس با هم پنهان و نمایان می‌شوند.
     $('callPill').classList.toggle('is-hidden', !callable);
@@ -772,7 +795,111 @@
    */
   const URL_PATTERN = /(https?:\/\/[^\s<>"']+|(?:^|[\s(])www\.[^\s<>"']+)/gi;
 
+  /**
+   * منشن: ‎@username‎ در متن پیام. فقط وقتی برجسته می‌شود که واقعاً عضو
+   * همین گفتگو باشد — وگرنه هر ‎@‎ای در متن، نشانه‌ی بی‌کار می‌شد.
+   * قاعده‌ی نام کاربری همان قاعده‌ی ثبت‌نام است: حرف انگلیسی، رقم و زیرخط.
+   */
+  const MENTION_PATTERN = /@([A-Za-z0-9_]{2,32})/g;
+
+  const mentionableIn = (conv) =>
+    new Set((conv?.members || []).map((m) => m.username?.toLowerCase()).filter(Boolean));
+
+  /** آیا من در این پیام منشن شده‌ام؟ */
+  function mentionsMe(message) {
+    if (!state.me?.username || message.kind !== 'text' || !message.body) return false;
+    const mine = state.me.username.toLowerCase();
+    for (const match of message.body.matchAll(MENTION_PATTERN)) {
+      if (match[1].toLowerCase() === mine) return true;
+    }
+    return false;
+  }
+
+  /** متن را با منشن‌های برجسته داخل ظرف می‌ریزد. */
+  function withMentions(container, text, known) {
+    let at = 0;
+    for (const match of text.matchAll(MENTION_PATTERN)) {
+      if (!known.has(match[1].toLowerCase())) continue;
+      if (match.index > at) container.appendChild(document.createTextNode(text.slice(at, match.index)));
+      const tag = document.createElement('span');
+      tag.className = 'mention';
+      if (match[1].toLowerCase() === state.me?.username?.toLowerCase()) tag.classList.add('is-me');
+      tag.textContent = match[0];
+      container.appendChild(tag);
+      at = match.index + match[0].length;
+    }
+    if (at < text.length) container.appendChild(document.createTextNode(text.slice(at)));
+    return container;
+  }
+
+  /* --------------------------- پیش‌نمایش لینک --------------------------- */
+
+  /* نتیجه‌ها در همین نشست کش می‌شوند تا هر بازرسمِ فهرست پیام‌ها دوباره
+     از سرور نپرسد. مقدارِ null یعنی «پرسیدیم و چیزی نبود». */
+  const previewCache = new Map();
+
+  /** نخستین نشانیِ واقعیِ داخل متن، یا null. */
+  function firstLink(text) {
+    for (const match of String(text || '').matchAll(URL_PATTERN)) {
+      const raw = match[0].replace(/^[\s(]/, '').replace(/[.,!?؛،)\]]+$/u, '');
+      if (!raw) continue;
+      return raw.startsWith('www.') ? `https://${raw}` : raw;
+    }
+    return null;
+  }
+
+  /**
+   * کارت پیش‌نمایش را زیر حباب می‌گذارد. خودش ناهمگام می‌رود و می‌آید؛ اگر
+   * چیزی پیدا نشد، هیچ جای خالی‌ای نمی‌ماند.
+   */
+  function attachLinkPreview(bubble, message) {
+    if (message.kind !== 'text' || message.deleted) return;
+    const link = firstLink(message.body);
+    if (!link) return;
+
+    const draw = (data) => {
+      if (!data || !bubble.isConnected) return;
+      const card = document.createElement('a');
+      card.className = 'link-card';
+      card.href = data.url;
+      card.target = '_blank';
+      card.rel = 'noopener noreferrer nofollow';
+      const site = document.createElement('bdi');
+      site.className = 'link-site';
+      site.textContent = data.site;
+      const title = document.createElement('span');
+      title.className = 'link-title';
+      title.textContent = data.title;
+      card.append(site, title);
+      if (data.description) {
+        const desc = document.createElement('span');
+        desc.className = 'link-desc';
+        desc.textContent = data.description;
+        card.appendChild(desc);
+      }
+      // زیر متن و بالای ردیفِ زمان می‌نشیند.
+      bubble.insertBefore(card, bubble.querySelector('.bubble-meta'));
+    };
+
+    // خودِ وعده کش می‌شود، نه نتیجه‌اش: فهرست پیام‌ها ممکن است پیش از
+    // رسیدنِ پاسخ دوباره ساخته شود و حبابِ تازه هم باید کارت بگیرد.
+    if (!previewCache.has(link)) {
+      previewCache.set(
+        link,
+        api(`/preview?url=${encodeURIComponent(link)}`)
+          .then((data) => data.preview)
+          .catch(() => null)
+      );
+    }
+    previewCache.get(link).then(draw);
+  }
+
   function linkify(container, text) {
+    const known = mentionableIn(state.conversations.get(state.activeId));
+    const put = (chunk) => {
+      if (known.size) withMentions(container, chunk, known);
+      else container.appendChild(document.createTextNode(chunk));
+    };
     let last = 0;
     for (const match of text.matchAll(URL_PATTERN)) {
       // الگو ممکن است یک فاصله‌ی ابتدایی را هم گرفته باشد.
@@ -784,7 +911,7 @@
       const trimmed = raw.replace(/[.,!?؛،)\]]+$/u, '');
       const href = trimmed.startsWith('www.') ? `https://${trimmed}` : trimmed;
 
-      if (start > last) container.appendChild(document.createTextNode(text.slice(last, start)));
+      if (start > last) put(text.slice(last, start));
       const link = document.createElement('a');
       link.href = href;
       link.target = '_blank';
@@ -794,7 +921,7 @@
       container.appendChild(link);
       last = start + trimmed.length;
     }
-    if (last < text.length) container.appendChild(document.createTextNode(text.slice(last)));
+    if (last < text.length) put(text.slice(last));
     return container;
   }
 
@@ -813,6 +940,25 @@
     return Math.min(...others.map((m) => m.lastReadMessageId || 0));
   }
 
+  /**
+   * پیامی که فقط چند ایموجی است، بزرگ و بدون حباب نشان داده می‌شود —
+   * همان کاری که هر پیام‌رسانی می‌کند. سقف سه تا، وگرنه دیوارِ ایموجی
+   * می‌شود. Extended_Pictographic خودِ ایموجی‌هاست؛ بقیه‌ی مجموعه برای
+   * رنگ پوست، جداکننده‌ی ZWJ و نشانه‌های پرچم است.
+   */
+  const EMOJI_ONLY =
+    /^(?:[\p{Extended_Pictographic}\p{Emoji_Presentation}\u{1F3FB}-\u{1F3FF}\u{1F1E6}-\u{1F1FF}\u{FE0F}\u{200D}\u{20E3}0-9#*]|\s)+$/u;
+
+  function isEmojiOnly(message) {
+    if (message.kind !== 'text' || message.deleted || message.replyTo) return false;
+    const body = (message.body || '').trim();
+    if (!body || !EMOJI_ONLY.test(body)) return false;
+    // رشته‌ای که فقط رقم یا فاصله باشد ایموجی نیست.
+    if (!/\p{Extended_Pictographic}/u.test(body)) return false;
+    return [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(body)]
+      .filter((g) => g.segment.trim()).length <= 3;
+  }
+
   function buildBubble(message, grouped) {
     const mine = message.senderId === state.me.id;
     const row = document.createElement('div');
@@ -822,7 +968,9 @@
     const bubble = document.createElement('div');
     // پیامی که فقط عکس است، بدون حاشیه نشان داده می‌شود تا قاب‌مانند نشود.
     const mediaOnly = message.kind === 'image' && !message.body && !message.replyTo && !message.deleted;
-    bubble.className = `bubble${grouped ? ' grouped' : ''}${mediaOnly ? ' media' : ''}`;
+    const jumbo = isEmojiOnly(message);
+    bubble.className =
+      `bubble${grouped ? ' grouped' : ''}${mediaOnly ? ' media' : ''}${jumbo ? ' jumbo' : ''}`;
 
     const conv = state.conversations.get(state.activeId);
     const inGroup = !mine && conv?.type === 'group';
@@ -959,6 +1107,17 @@
       actions.appendChild(iconButton('☑', t('انتخاب'), () => togglePick(message.id, true)));
       actions.appendChild(iconButton('↪', t('بازفرستادن'), () => forwardModal(message)));
       actions.appendChild(iconButton('↩', t('پاسخ'), () => startReply(message)));
+      // سنجاق در گروه فقط کارِ سازنده و مدیر است؛ سرور هم همین را می‌گوید،
+      // ولی دکمه‌ای که کار نمی‌کند نباید اصلاً دیده شود.
+      const myRole = conv?.members?.find((m) => m.id === state.me.id)?.role;
+      const mayPin = conv?.type !== 'group' || ['owner', 'admin'].includes(myRole);
+      if (mayPin) {
+        const isPinned = conv?.pinnedMessage?.id === message.id;
+        actions.appendChild(
+          iconButton('📌', isPinned ? t('برداشتن سنجاق پیام') : t('سنجاق کردن پیام'),
+            () => togglePin(message))
+        );
+      }
       if (mine && message.kind !== 'voice') {
         actions.appendChild(iconButton('✎', t('ویرایش'), () => startEdit(message)));
       }
@@ -982,7 +1141,9 @@
         togglePick(message.id);
       });
     }
+    attachLinkPreview(bubble, message);
     row.appendChild(bubble);
+    attachSwipeToReply(row, message);
     return row;
   }
 
@@ -1439,6 +1600,7 @@
     state.messages = [];
     state.replyTo = null;
     state.editing = null;
+    hideMentionBox();
     clearImagePreview();
     updateReplyBar();
     renderConversations();
@@ -1511,6 +1673,186 @@
     }
   }
 
+  /* --------------------------- تکمیلِ منشن --------------------------- */
+
+  /**
+   * وقتی داخل گروه ‎@‎ می‌نویسی، فهرست اعضا باز می‌شود. فقط در گروه، چون در
+   * گفتگوی دونفره منشن معنی ندارد.
+   *
+   * «کلمه‌ی زیر مکان‌نما» از روی متنِ پیش از مکان‌نما پیدا می‌شود، نه با
+   * جستجوی کل متن: وگرنه ویرایشِ وسطِ یک پیام، منشنِ جای دیگر را عوض می‌کرد.
+   */
+  function mentionDraft() {
+    const input = $('messageInput');
+    const upto = input.value.slice(0, input.selectionStart ?? input.value.length);
+    const match = upto.match(/(?:^|\s)@([A-Za-z0-9_]{0,32})$/);
+    return match ? { query: match[1].toLowerCase(), start: upto.length - match[1].length - 1 } : null;
+  }
+
+  function hideMentionBox() {
+    $('mentionBox').classList.add('is-hidden');
+  }
+
+  function renderMentionBox() {
+    const box = $('mentionBox');
+    const conv = state.conversations.get(state.activeId);
+    const draft = conv?.type === 'group' ? mentionDraft() : null;
+    if (!draft) return hideMentionBox();
+
+    const matches = (conv.members || [])
+      .filter((member) => member.id !== state.me.id && member.username)
+      .filter((member) =>
+        member.username.toLowerCase().startsWith(draft.query) ||
+        member.displayName.toLowerCase().includes(draft.query))
+      .slice(0, 6);
+    if (matches.length === 0) return hideMentionBox();
+
+    box.innerHTML = '';
+    for (const member of matches) {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'mention-item';
+      const avatar = document.createElement('span');
+      avatar.className = 'avatar';
+      paintAvatar(avatar, member.displayName, member.avatarColor, false, member.avatarUrl);
+      const name = document.createElement('span');
+      name.className = 'mention-name';
+      name.textContent = member.displayName;
+      const handle = document.createElement('bdi');
+      handle.className = 'muted';
+      handle.textContent = `@${member.username}`;
+      item.append(avatar, name, handle);
+      item.addEventListener('click', () => pickMention(member, draft));
+      box.appendChild(item);
+    }
+    box.classList.remove('is-hidden');
+    return undefined;
+  }
+
+  function pickMention(member, draft) {
+    const input = $('messageInput');
+    const at = input.selectionStart ?? input.value.length;
+    const inserted = `@${member.username} `;
+    input.value = input.value.slice(0, draft.start) + inserted + input.value.slice(at);
+    const caret = draft.start + inserted.length;
+    input.setSelectionRange(caret, caret);
+    hideMentionBox();
+    autoGrow();
+    input.focus();
+  }
+
+  /* --------------------------- پیام سنجاق‌شده --------------------------- */
+
+  /**
+   * یک پیام می‌تواند بالای گفتگو سنجاق شود — برای همه‌ی اعضا، نه فقط خودم.
+   * ضربه روی نوار، روی همان پیام می‌پرد.
+   */
+  function renderPinnedBar(conv) {
+    const bar = $('pinnedBar');
+    const message = conv?.pinnedMessage;
+    bar.classList.toggle('is-hidden', !message);
+    if (!message) return;
+    $('pinnedText').textContent = messagePreview(message);
+    bar.onclick = () => scrollToMessage(message.id);
+  }
+
+  /** خلاصه‌ی یک‌خطی از هر نوع پیام، برای نوار سنجاق و جاهای مشابه. */
+  function messagePreview(message) {
+    if (message.deleted) return t('پیام حذف شد');
+    if (message.kind === 'image') return t('🖼 عکس') + (message.caption ? ` — ${message.caption}` : '');
+    if (message.kind === 'voice') return t('🎤 پیام صوتی');
+    if (message.kind === 'file') return `📎 ${message.attachment?.name || t('فایل')}`;
+    return message.body;
+  }
+
+  async function togglePin(message) {
+    const conv = state.conversations.get(state.activeId);
+    const already = conv?.pinnedMessage?.id === message.id;
+    try {
+      const data = await api(`/conversations/${state.activeId}/pin`, {
+        method: 'POST',
+        body: { messageId: already ? null : message.id },
+      });
+      state.conversations.set(data.conversation.id, data.conversation);
+      renderPinnedBar(data.conversation);
+      toast(already ? t('سنجاق پیام برداشته شد.') : t('پیام سنجاق شد.'));
+    } catch (err) {
+      toast(err.message, true);
+    }
+  }
+
+  /* --------------------------- سوایپ برای پاسخ --------------------------- */
+
+  /**
+   * کشیدنِ پیام به سمتِ متن، پاسخ را باز می‌کند — همان حرکتی که همه‌ی
+   * پیام‌رسان‌ها دارند.
+   *
+   * جهت با زبان عوض می‌شود: در راست‌چین به چپ کشیده می‌شود و در چپ‌چین به
+   * راست. تا وقتی حرکت بیشترْ عمودی است دست نمی‌زنیم، وگرنه جلوی اسکرولِ
+   * معمولی گرفته می‌شد.
+   */
+  const SWIPE_TRIGGER = 56; // پیکسلِ لازم برای اینکه پاسخ باز شود
+  const SWIPE_MAX = 74;
+
+  function attachSwipeToReply(row, message) {
+    if (message.deleted || message.kind === 'system' || message.kind === 'call') return;
+
+    let startX = 0;
+    let startY = 0;
+    let dragging = null; // null یعنی هنوز معلوم نیست عمودی است یا افقی
+    let shift = 0;
+
+    const dir = () => (document.documentElement.dir === 'rtl' ? -1 : 1);
+    const paint = (px) => {
+      row.style.transform = px ? `translateX(${px}px)` : '';
+      row.classList.toggle('swipe-armed', Math.abs(px) >= SWIPE_TRIGGER);
+    };
+    const reset = () => {
+      row.classList.remove('is-swiping');
+      row.style.transform = '';
+      row.classList.remove('swipe-armed');
+      dragging = null;
+      shift = 0;
+    };
+
+    row.addEventListener('touchstart', (event) => {
+      if (event.touches.length !== 1 || state.picked.size > 0) return;
+      startX = event.touches[0].clientX;
+      startY = event.touches[0].clientY;
+      dragging = null;
+      shift = 0;
+    }, { passive: true });
+
+    row.addEventListener('touchmove', (event) => {
+      if (event.touches.length !== 1) return;
+      const dx = event.touches[0].clientX - startX;
+      const dy = event.touches[0].clientY - startY;
+      if (dragging === null) {
+        if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+        // اسکرولِ عمودی همیشه مقدم است.
+        dragging = Math.abs(dx) > Math.abs(dy) * 1.4;
+        if (dragging) row.classList.add('is-swiping');
+        else return;
+      }
+      if (!dragging) return;
+      // فقط به سمتی که متن می‌رود؛ جهت دیگر هیچ کاری نمی‌کند.
+      const towards = dx * dir();
+      shift = Math.max(0, Math.min(SWIPE_MAX, towards)) * dir();
+      if (Math.abs(shift) > 2) event.preventDefault();
+      paint(shift);
+    }, { passive: false });
+
+    const finish = () => {
+      if (dragging && Math.abs(shift) >= SWIPE_TRIGGER) {
+        startReply(message);
+        navigator.vibrate?.(12);
+      }
+      reset();
+    };
+    row.addEventListener('touchend', finish);
+    row.addEventListener('touchcancel', reset);
+  }
+
   /* ------------------------------ ارسال پیام ---------------------------- */
 
   function startReply(message) {
@@ -1578,6 +1920,7 @@
 
   $('messageInput').addEventListener('input', () => {
     autoGrow();
+    renderMentionBox();
     sendTyping(true);
     clearTimeout(saveDraft.timer);
     saveDraft.timer = setTimeout(saveDraft, 400);
@@ -2231,16 +2574,17 @@
       handleTyping.timers[key] = setTimeout(() => {
         state.typingPeers.delete(key);
         renderTyping();
+        renderConversations();
       }, 5000);
     }
     renderTyping();
+    // فهرست گفتگوها هم باید «در حال نوشتن» را نشان بدهد.
+    renderConversations();
   }
 
   function renderTyping() {
     const indicator = $('typingIndicator');
-    const names = [...state.typingPeers.values()]
-      .filter((event) => event.conversationId === state.activeId)
-      .map((event) => event.displayName);
+    const names = typingNamesIn(state.activeId);
     if (names.length === 0) {
       indicator.classList.add('is-hidden');
       return;
@@ -3664,6 +4008,103 @@
     }
   }
 
+  /* ---------------------- گالریِ رسانه‌های گفتگو ---------------------- */
+
+  /**
+   * همه‌ی عکس‌ها، فایل‌ها و پیام‌های صوتیِ یک گفتگو در یک جا.
+   * سه دسته جدا هستند چون هر کدام شکلِ نمایشِ خودش را دارد: عکس در شبکه،
+   * فایل و صوت در فهرست.
+   */
+  function mediaModal(conv) {
+    openModal(t('عکس‌ها و فایل‌ها'), (body) => {
+      const tabs = document.createElement('div');
+      tabs.className = 'look-row';
+      const area = document.createElement('div');
+      area.className = 'media-area';
+      body.append(tabs, area);
+
+      const load = async (kind, button) => {
+        for (const sibling of tabs.children) sibling.classList.remove('is-active');
+        button.classList.add('is-active');
+        area.innerHTML = '';
+        area.appendChild(emptyNote(t('در حال بارگذاری…')));
+        let items = [];
+        try {
+          items = (await api(`/conversations/${conv.id}/media?kind=${kind}`)).media;
+        } catch (err) {
+          area.innerHTML = '';
+          area.appendChild(emptyNote(err.message));
+          return;
+        }
+        area.innerHTML = '';
+        if (items.length === 0) {
+          area.appendChild(emptyNote(t('هنوز چیزی اینجا نیست.')));
+          return;
+        }
+        if (kind === 'image') {
+          const grid = document.createElement('div');
+          grid.className = 'media-grid';
+          for (const message of items) {
+            const cell = document.createElement('button');
+            cell.type = 'button';
+            cell.className = 'media-cell';
+            const img = document.createElement('img');
+            img.loading = 'lazy';
+            img.alt = message.caption || t('عکس');
+            img.src = fileUrl(message.attachment.url);
+            cell.appendChild(img);
+            cell.addEventListener('click', () => openLightbox(message.attachment));
+            grid.appendChild(cell);
+          }
+          area.appendChild(grid);
+          return;
+        }
+        const list = document.createElement('div');
+        list.className = 'stack';
+        for (const message of items) {
+          const row = document.createElement('div');
+          row.className = 'media-row';
+          const main = document.createElement('div');
+          main.className = 'media-main';
+          const name = document.createElement('bdi');
+          name.className = 'media-name';
+          name.textContent =
+            kind === 'voice' ? t('🎤 پیام صوتی') : message.attachment?.name || t('فایل');
+          const when = document.createElement('small');
+          when.className = 'muted';
+          when.textContent = `${dayText(message.createdAt)} · ${
+            kind === 'voice' ? clockText(message.durationMs) : fileSize(message.attachment?.size || 0)
+          }`;
+          main.append(name, when);
+          const jump = document.createElement('button');
+          jump.type = 'button';
+          jump.className = 'btn';
+          jump.textContent = t('نمایش');
+          jump.addEventListener('click', () => {
+            closeModal();
+            setTimeout(() => scrollToMessage(message.id), 180);
+          });
+          row.append(main, jump);
+          list.appendChild(row);
+        }
+        area.appendChild(list);
+      };
+
+      for (const [kind, label] of [
+        ['image', t('عکس')],
+        ['file', t('فایل')],
+        ['voice', t('پیام صوتی')],
+      ]) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = label;
+        button.addEventListener('click', () => load(kind, button));
+        tabs.appendChild(button);
+      }
+      load('image', tabs.firstChild);
+    });
+  }
+
   function chatInfoModal() {
     const conv = state.conversations.get(state.activeId);
     if (!conv) return;
@@ -3682,6 +4123,18 @@
       text.querySelector('small').textContent = chatStatusText(conv);
       heading.append(avatar, text);
       body.appendChild(heading);
+
+      const media = document.createElement('button');
+      media.type = 'button';
+      media.className = 'btn';
+      media.textContent = t('🖼 عکس‌ها و فایل‌ها');
+      media.addEventListener('click', () => {
+        closeModal();
+        // بستنِ پنجره تاریخچه را عقب می‌برد؛ باید تمام شود تا پنجره‌ی تازه
+        // روی تاریخچه‌ی درست بنشیند.
+        setTimeout(() => mediaModal(conv), 180);
+      });
+      body.appendChild(media);
 
       if (conv.type === 'direct' && !conv.peer) {
         const gone = document.createElement('p');

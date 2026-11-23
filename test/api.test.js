@@ -1827,3 +1827,52 @@ test('پاک کردن گفتگو، تماس‌هایش را هم از فهرست
   // ولی برای طرف مقابل سر جایش است
   assert.equal((await call('/api/calls', { token: b.token })).body.calls.length, 1);
 });
+
+/* ---------------------------- پیش‌نمایش لینک ---------------------------- */
+
+test('پیش‌نمایش لینک: نشانی داخلی و پروتکل غیرمجاز رد می‌شوند', () => {
+  const { isPrivateAddress, checkUrl } = require('../server/preview.js');
+
+  // همه‌ی شکل‌های «داخلی» باید گرفته شوند
+  for (const ip of [
+    '127.0.0.1', '10.1.2.3', '172.16.0.1', '172.31.255.255', '192.168.1.1',
+    '169.254.169.254', // متادیتای ابری — کلاسیک‌ترین هدف SSRF
+    '100.64.0.1', '0.0.0.0', '224.0.0.1',
+    '::1', 'fd00::1', 'fe80::1', '::ffff:127.0.0.1',
+  ]) {
+    assert.equal(isPrivateAddress(ip), true, `${ip} باید داخلی شمرده شود`);
+  }
+  for (const ip of ['8.8.8.8', '1.1.1.1', '172.15.0.1', '172.32.0.1', '2606:4700::1111']) {
+    assert.equal(isPrivateAddress(ip), false, `${ip} نباید داخلی شمرده شود`);
+  }
+
+  // فقط http/https و فقط پورت ۸۰ و ۴۴۳
+  assert.ok(checkUrl('https://example.com/a'));
+  assert.ok(checkUrl('http://example.com:80/'));
+  for (const bad of [
+    'file:///etc/passwd', 'ftp://example.com', 'gopher://example.com',
+    'javascript:alert(1)', 'http://example.com:22/', 'http://example.com:6379/',
+    'not a url',
+  ]) {
+    assert.throws(() => checkUrl(bad), undefined, `${bad} باید رد شود`);
+  }
+});
+
+test('پیش‌نمایش لینک: بدون ورود نمی‌شود و نشانی داخلی چیزی برنمی‌گرداند', async () => {
+  assert.equal((await call('/api/preview?url=https://example.com')).status, 401);
+
+  const user = freshUser('prev', 'پیش‌نما');
+  // پاسخ همیشه ۲۰۰ با مقدار خالی است: اگر «رد شد» با «پیدا نشد» فرق می‌کرد،
+  // می‌شد با همان تفاوت فهمید کدام نشانی داخلی است.
+  const local = await call(`/api/preview?url=${encodeURIComponent(`${base}/api/health`)}`, {
+    token: user.token,
+  });
+  assert.equal(local.status, 200);
+  assert.equal(local.body.preview, null, 'لوکال‌هاست نباید پیش‌نمایش بگیرد');
+
+  for (const bad of ['file:///etc/passwd', 'http://169.254.169.254/latest/meta-data/', 'http://10.0.0.1/']) {
+    const res = await call(`/api/preview?url=${encodeURIComponent(bad)}`, { token: user.token });
+    assert.equal(res.status, 200, `${bad} باید بی‌خطا رد شود`);
+    assert.equal(res.body.preview, null, `${bad} نباید پیش‌نمایش بگیرد`);
+  }
+});

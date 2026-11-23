@@ -100,6 +100,7 @@ for (const [table, column, definition] of [
   ['messages', 'forwarded', 'INTEGER NOT NULL DEFAULT 0'],
   ['sessions', 'user_agent', 'TEXT'],
   ['sessions', 'last_seen_at', 'INTEGER'],
+  ['conversations', 'pinned_message_id', 'INTEGER'],
 ]) {
   const existing = db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
   if (!existing.includes(column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
